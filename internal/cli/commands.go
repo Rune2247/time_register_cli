@@ -38,6 +38,8 @@ Syncs to Google Sheets and Google Calendar.`,
 		newSyncCmd(d),
 		newAuthCmd(),
 		newGuideCmd(d),
+		newDaemonCmd(d),
+		newAutostartCmd(),
 	)
 
 	return root

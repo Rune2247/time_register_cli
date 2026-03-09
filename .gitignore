@@ -16,5 +16,11 @@ Thumbs.db
 .env
 .env.*
 
+# Google credentials (should never be committed)
+credentials.json
+token.json
+*.credentials
+client_secret*.json
+
 # Plan
 .plan/

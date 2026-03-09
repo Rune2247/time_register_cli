@@ -18,7 +18,7 @@ func closeOpenEntry(d *db.DB, date, endTime string) error {
 		return nil
 	}
 
-	duration, err := calcDurationMinutes(open.StartTime, endTime)
+	duration, err := CalcDurationMinutes(open.StartTime, endTime)
 	if err != nil {
 		return fmt.Errorf("calc duration: %w", err)
 	}
@@ -26,7 +26,8 @@ func closeOpenEntry(d *db.DB, date, endTime string) error {
 	return d.UpdateEntryEndTime(open.ID, endTime, duration)
 }
 
-func calcDurationMinutes(startTime, endTime string) (int, error) {
+// CalcDurationMinutes returns the difference in minutes between two HH:MM times.
+func CalcDurationMinutes(startTime, endTime string) (int, error) {
 	start, err := time.Parse("15:04", startTime)
 	if err != nil {
 		return 0, fmt.Errorf("parse start time %q: %w", startTime, err)

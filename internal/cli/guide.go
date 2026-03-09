@@ -87,6 +87,50 @@ STEP 8: Test
 
 Run "timereg config" to see your current configuration.
 Run "timereg" to start the interactive menu.
+
+=== Optional: Systray (Ubuntu Top Bar Widget) ===
+
+The systray shows your current assignment and elapsed time in the
+Ubuntu top bar. It also runs background sync every 5 minutes.
+
+STEP 1: Install system dependencies
+  sudo apt install libayatana-appindicator3-dev libgtk-3-dev
+
+STEP 2: Rebuild with systray support
+  go build -tags systray -o timereg ./cmd/timereg/
+
+  Or if you installed via go install:
+  go install -tags systray ./cmd/timereg/
+
+STEP 3: Test the daemon
+  timereg daemon
+
+  You should see a "TR" icon in the top bar.
+  Click it to start assignments, take lunch, or end the day.
+  It uses zenity for input dialogs and notify-send for notifications.
+
+STEP 4: Auto-start on login (optional)
+  timereg autostart enable
+
+  This creates a .desktop file in ~/.config/autostart/ so the
+  daemon starts automatically when you log in.
+
+  To disable:
+  timereg autostart disable
+
+  To check status:
+  timereg autostart status
+
+=== Security Note ===
+
+Your Google credentials are stored outside the git repository:
+  ~/.config/timereg/credentials.json  (OAuth client config)
+  ~/.config/timereg/token.json        (your auth token, 0600 permissions)
+  ~/.config/timereg/timereg.db        (local SQLite database)
+
+These files are NEVER committed to git. The .gitignore also blocks
+any credentials.json or token.json files if accidentally placed in
+the project directory.
 `
 
 func newGuideCmd(d *db.DB) *cobra.Command {
