@@ -37,6 +37,7 @@ Syncs to Google Sheets and Google Calendar.`,
 		newConfigCmd(d),
 		newSyncCmd(d),
 		newAuthCmd(),
+		newGuideCmd(d),
 	)
 
 	return root

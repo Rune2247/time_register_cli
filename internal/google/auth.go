@@ -30,11 +30,26 @@ func tokenPath() (string, error) {
 
 // credentialsPath returns the path to the OAuth credentials file.
 func credentialsPath() (string, error) {
+	return CredentialsFilePath()
+}
+
+// CredentialsFilePath returns the expected path for credentials.json.
+func CredentialsFilePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(home, ".config", "timereg", "credentials.json"), nil
+}
+
+// CredentialsFileExists checks if the credentials.json file exists.
+func CredentialsFileExists() bool {
+	p, err := CredentialsFilePath()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(p)
+	return err == nil
 }
 
 // getOAuthConfig reads the credentials.json and returns an OAuth2 config.
