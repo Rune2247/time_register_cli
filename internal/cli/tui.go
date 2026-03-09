@@ -11,6 +11,30 @@ import (
 	"github.com/rlf/time_register_cli/internal/db"
 )
 
+const guideQuickText = `Setup Guide
+==========
+
+1. Set up Google API (run in terminal):
+   timereg guide           Full step-by-step instructions
+   timereg guide status    Check what's configured
+
+2. Authenticate:
+   timereg auth            Google OAuth login
+
+3. Connect services (pick one):
+   timereg config create-spreadsheet "TimeReg 2026"
+   timereg config create-calendar "Work Log"
+   -- or --
+   timereg config set spreadsheet_id "URL or ID"
+   timereg config set calendar_id "calendar@group.calendar.google.com"
+
+4. Configure defaults:
+   timereg config setup    Interactive wizard
+
+5. Start the systray daemon (optional):
+   timereg daemon          Run top bar widget + background sync
+   timereg autostart enable  Start on login`
+
 // Styles
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
@@ -42,10 +66,12 @@ var mainMenu = []menuItem{
 	{label: "Start Assignment", value: "start"},
 	{label: "Lunch", value: "lunch"},
 	{label: "End Day", value: "end"},
+	{label: "Reopen Day", value: "reopen"},
 	{label: "Backfill", value: "backfill"},
 	{label: "Holiday", value: "holiday"},
 	{label: "Status", value: "status"},
 	{label: "Config", value: "config"},
+	{label: "Setup Guide", value: "guide"},
 }
 
 var backfillTypes = []menuItem{
@@ -196,9 +222,18 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		err := actions.PrintStatus(m.db, actions.TodayInCopenhagen())
 		return m.showResult(err)
 
+	case "reopen":
+		err := actions.ReopenDay(m.db, actions.TodayInCopenhagen())
+		return m.showResult(err)
+
 	case "config":
 		err := actions.PrintAllConfig(m.db)
 		return m.showResult(err)
+
+	case "guide":
+		m.phase = phaseResult
+		m.result = guideQuickText
+		return m, nil
 	}
 
 	return m, nil

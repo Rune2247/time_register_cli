@@ -54,7 +54,7 @@ func RunSetup(d *db.DB) error {
 
 	fmt.Println("TimeReg Setup")
 	fmt.Println("=============")
-	fmt.Println("Press Enter to keep the current/default value.\n")
+	fmt.Println("Press Enter to keep the current/default value.")
 
 	for _, step := range setupSteps {
 		current, _ := d.GetConfig(step.key)
