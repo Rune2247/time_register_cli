@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -198,12 +200,14 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "lunch":
-		err := actions.StartLunch(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
-		return m.showResult(err)
+		return m.showResultWithCapture(func() error {
+			return actions.StartLunch(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
+		})
 
 	case "end":
-		err := actions.EndDay(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
-		return m.showResult(err)
+		return m.showResultWithCapture(func() error {
+			return actions.EndDay(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
+		})
 
 	case "backfill":
 		m.phase = phaseBackfillType
@@ -219,16 +223,19 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "status":
-		err := actions.PrintStatus(m.db, actions.TodayInCopenhagen())
-		return m.showResult(err)
+		return m.showResultWithCapture(func() error {
+			return actions.PrintStatus(m.db, actions.TodayInCopenhagen())
+		})
 
 	case "reopen":
-		err := actions.ReopenDay(m.db, actions.TodayInCopenhagen())
-		return m.showResult(err)
+		return m.showResultWithCapture(func() error {
+			return actions.ReopenDay(m.db, actions.TodayInCopenhagen())
+		})
 
 	case "config":
-		err := actions.PrintAllConfig(m.db)
-		return m.showResult(err)
+		return m.showResultWithCapture(func() error {
+			return actions.PrintAllConfig(m.db)
+		})
 
 	case "guide":
 		m.phase = phaseResult
@@ -263,8 +270,9 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("assignment name cannot be empty")
 			return m, nil
 		}
-		err := actions.StartAssignment(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), value)
-		return m.showResult(err)
+		return m.showResultWithCapture(func() error {
+			return actions.StartAssignment(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), value)
+		})
 
 	case phaseHolidayDate:
 		date := actions.TodayInCopenhagen()
@@ -276,8 +284,9 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			}
 			date = parsed
 		}
-		err := actions.MarkHoliday(m.db, date)
-		return m.showResult(err)
+		return m.showResultWithCapture(func() error {
+			return actions.MarkHoliday(m.db, date)
+		})
 
 	case phaseBackfillDate:
 		if value == "" {
@@ -316,11 +325,13 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 
 		switch m.backfillType {
 		case "end":
-			err := actions.EndDay(m.db, m.backfillDate, m.backfillTime)
-			return m.showResult(err)
+			return m.showResultWithCapture(func() error {
+				return actions.EndDay(m.db, m.backfillDate, m.backfillTime)
+			})
 		case "lunch":
-			err := actions.StartLunch(m.db, m.backfillDate, m.backfillTime)
-			return m.showResult(err)
+			return m.showResultWithCapture(func() error {
+				return actions.StartLunch(m.db, m.backfillDate, m.backfillTime)
+			})
 		default:
 			m.phase = phaseBackfillName
 			m.inputPrompt = "Assignment name"
@@ -335,10 +346,40 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("assignment name cannot be empty")
 			return m, nil
 		}
-		err := actions.StartAssignment(m.db, m.backfillDate, m.backfillTime, value)
-		return m.showResult(err)
+		return m.showResultWithCapture(func() error {
+			return actions.StartAssignment(m.db, m.backfillDate, m.backfillTime, value)
+		})
 	}
 
+	return m, nil
+}
+
+// captureOutput runs a function and captures its stdout output.
+func captureOutput(fn func() error) (string, error) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := fn()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String(), err
+}
+
+func (m model) showResultWithCapture(fn func() error) (tea.Model, tea.Cmd) {
+	output, err := captureOutput(fn)
+	m.phase = phaseResult
+	m.err = err
+	if err == nil {
+		m.result = strings.TrimSpace(output)
+		if m.result == "" {
+			m.result = "Done!"
+		}
+	}
 	return m, nil
 }
 
