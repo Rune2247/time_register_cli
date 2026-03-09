@@ -1,0 +1,241 @@
+package cli
+
+import (
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/rlf/time_register_cli/internal/actions"
+	"github.com/rlf/time_register_cli/internal/db"
+	"github.com/spf13/cobra"
+)
+
+func NewRootCmd(d *db.DB) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "timereg",
+		Short: "TimeReg — CLI time registration tool",
+		Long: `TimeReg — CLI time registration tool
+
+Track daily work assignments from your terminal.
+Syncs to Google Sheets and Google Calendar.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Interactive TUI menu (Phase 2)
+			return cmd.Help()
+		},
+	}
+
+	root.AddCommand(
+		newStartCmd(d),
+		newLunchCmd(d),
+		newEndCmd(d),
+		newStatusCmd(d),
+		newWeekCmd(d),
+		newBackfillCmd(d),
+		newBacklogCmd(d),
+		newHolidayCmd(d),
+		newConfigCmd(d),
+	)
+
+	return root
+}
+
+func newStartCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "start <name>",
+		Short: "Start a new assignment",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return actions.StartAssignment(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), args[0])
+		},
+	}
+}
+
+func newLunchCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "lunch",
+		Short: "Start lunch break",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return actions.StartLunch(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
+		},
+	}
+}
+
+func newEndCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "end",
+		Short: "End the day",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return actions.EndDay(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
+		},
+	}
+}
+
+func newStatusCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show today + week summary",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return actions.PrintStatus(d, actions.TodayInCopenhagen())
+		},
+	}
+}
+
+func newWeekCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "week",
+		Short: "Show full week summary",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			today := actions.TodayInCopenhagen()
+			weekStatus, err := actions.GetWeekStatus(d, today)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Week %s to %s\n", weekStatus.StartDate, weekStatus.EndDate)
+			fmt.Printf("Work: %.1f hours\n", float64(weekStatus.WorkMinutes)/60.0)
+			fmt.Printf("Lunch: %.1f hours\n", float64(weekStatus.LunchMinutes)/60.0)
+			return nil
+		},
+	}
+}
+
+func newBackfillCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "backfill",
+		Short: "Interactive backfill for missed entries",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Interactive backfill (Phase 2 — TUI prompts)
+			fmt.Println("Interactive backfill coming in Phase 2. Use 'timereg backlog' for now.")
+			return nil
+		},
+	}
+}
+
+func newBacklogCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "backlog <day> <month> <time> <name|end|lunch>",
+		Short: "Quick add past entry",
+		Long: `Quick add a past entry without prompts.
+
+Examples:
+  timereg backlog 3 4 830 "Client meeting"   → assignment on April 3rd at 08:30
+  timereg backlog 3 4 1600 end               → end day on April 3rd at 16:00
+  timereg backlog 3 4 1200 lunch             → lunch on April 3rd at 12:00`,
+		Args: cobra.ExactArgs(4),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			date, err := parseBacklogDate(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			timeStr, err := parseBacklogTime(args[2])
+			if err != nil {
+				return err
+			}
+
+			switch args[3] {
+			case "end":
+				return actions.EndDay(d, date, timeStr)
+			case "lunch":
+				return actions.StartLunch(d, date, timeStr)
+			default:
+				return actions.StartAssignment(d, date, timeStr, args[3])
+			}
+		},
+	}
+}
+
+func newHolidayCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "holiday [d/m]",
+		Short: "Mark a day as holiday (default: today)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			date := actions.TodayInCopenhagen()
+			if len(args) == 1 {
+				parsed, err := parseSlashDate(args[0])
+				if err != nil {
+					return err
+				}
+				date = parsed
+			}
+			return actions.MarkHoliday(d, date)
+		},
+	}
+}
+
+func newConfigCmd(d *db.DB) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return actions.PrintAllConfig(d)
+		},
+	}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "set <key> <value>",
+		Short: "Set a config value",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return actions.SetConfigValue(d, args[0], args[1])
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "get <key>",
+		Short: "Get a config value",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			val, err := actions.GetConfigValue(d, args[0])
+			if err != nil {
+				return err
+			}
+			if val == "" {
+				fmt.Printf("%s is not set\n", args[0])
+			} else {
+				fmt.Printf("%s = %s\n", args[0], val)
+			}
+			return nil
+		},
+	})
+
+	return cmd
+}
+
+// parseBacklogDate converts day + month args to YYYY-MM-DD using current year.
+func parseBacklogDate(dayStr, monthStr string) (string, error) {
+	day, err := strconv.Atoi(dayStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid day %q: %w", dayStr, err)
+	}
+	month, err := strconv.Atoi(monthStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid month %q: %w", monthStr, err)
+	}
+	loc, _ := time.LoadLocation("Europe/Copenhagen")
+	year := time.Now().In(loc).Year()
+	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), nil
+}
+
+// parseBacklogTime converts HHMM (e.g. 830, 1600) to HH:MM.
+func parseBacklogTime(timeStr string) (string, error) {
+	// Pad to 4 digits: "830" -> "0830"
+	for len(timeStr) < 4 {
+		timeStr = "0" + timeStr
+	}
+	if len(timeStr) != 4 {
+		return "", fmt.Errorf("invalid time %q: expected HHMM format", timeStr)
+	}
+	return timeStr[:2] + ":" + timeStr[2:], nil
+}
+
+// parseSlashDate converts d/m to YYYY-MM-DD using current year.
+func parseSlashDate(s string) (string, error) {
+	var day, month int
+	_, err := fmt.Sscanf(s, "%d/%d", &day, &month)
+	if err != nil {
+		return "", fmt.Errorf("invalid date %q: expected d/m format", s)
+	}
+	loc, _ := time.LoadLocation("Europe/Copenhagen")
+	year := time.Now().In(loc).Year()
+	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), nil
+}
