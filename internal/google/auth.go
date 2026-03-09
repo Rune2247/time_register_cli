@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -129,14 +133,51 @@ func Authenticate(ctx context.Context) (option.ClientOption, error) {
 	return option.WithHTTPClient(client), nil
 }
 
-// runAuthFlow opens a browser-based OAuth flow and returns the token.
+// runAuthFlow starts a local HTTP server on a random port, opens the browser
+// for OAuth consent, and catches the redirect to extract the auth code.
 func runAuthFlow(config *oauth2.Config) (*oauth2.Token, error) {
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	fmt.Printf("Go to the following URL in your browser:\n\n%s\n\nEnter the authorization code: ", authURL)
+	// Listen on a random available port
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("start local server: %w", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	config.RedirectURL = fmt.Sprintf("http://127.0.0.1:%d", port)
 
+	codeCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+
+	// Start local HTTP server to catch the redirect
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			errCh <- fmt.Errorf("no code in redirect")
+			fmt.Fprintf(w, "<html><body><h2>Error: no authorization code received.</h2><p>Please try again.</p></body></html>")
+			return
+		}
+		codeCh <- code
+		fmt.Fprintf(w, "<html><body><h2>Authentication successful!</h2><p>You can close this tab and return to the terminal.</p></body></html>")
+	})
+
+	server := &http.Server{Handler: mux}
+	go server.Serve(listener)
+	defer server.Close()
+
+	// Open browser
+	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	fmt.Printf("Opening browser for authentication...\n")
+	if err := openBrowser(authURL); err != nil {
+		fmt.Printf("Could not open browser automatically.\nOpen this URL manually:\n\n%s\n", authURL)
+	}
+	fmt.Println("Waiting for authentication...")
+
+	// Wait for the code
 	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		return nil, fmt.Errorf("unable to read authorization code: %w", err)
+	select {
+	case authCode = <-codeCh:
+	case err := <-errCh:
+		return nil, err
 	}
 
 	tok, err := config.Exchange(context.Background(), authCode)
@@ -145,6 +186,17 @@ func runAuthFlow(config *oauth2.Config) (*oauth2.Token, error) {
 	}
 
 	return tok, nil
+}
+
+func openBrowser(url string) error {
+	switch runtime.GOOS {
+	case "linux":
+		return exec.Command("xdg-open", url).Start()
+	case "darwin":
+		return exec.Command("open", url).Start()
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
 }
 
 // RunAuthSetup forces re-authentication (for timereg config setup).
