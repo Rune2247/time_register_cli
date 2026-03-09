@@ -19,8 +19,7 @@ func NewRootCmd(d *db.DB) *cobra.Command {
 Track daily work assignments from your terminal.
 Syncs to Google Sheets and Google Calendar.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Interactive TUI menu (Phase 2)
-			return cmd.Help()
+			return RunTUI(d)
 		},
 	}
 
@@ -103,9 +102,7 @@ func newBackfillCmd(d *db.DB) *cobra.Command {
 		Use:   "backfill",
 		Short: "Interactive backfill for missed entries",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Interactive backfill (Phase 2 — TUI prompts)
-			fmt.Println("Interactive backfill coming in Phase 2. Use 'timereg backlog' for now.")
-			return nil
+			return RunTUI(d)
 		},
 	}
 }
