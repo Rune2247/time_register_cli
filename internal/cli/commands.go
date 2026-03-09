@@ -7,6 +7,8 @@ import (
 
 	"github.com/rlf/time_register_cli/internal/actions"
 	"github.com/rlf/time_register_cli/internal/db"
+	googleapi "github.com/rlf/time_register_cli/internal/google"
+	"github.com/rlf/time_register_cli/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +35,8 @@ Syncs to Google Sheets and Google Calendar.`,
 		newBacklogCmd(d),
 		newHolidayCmd(d),
 		newConfigCmd(d),
+		newSyncCmd(d),
+		newAuthCmd(),
 	)
 
 	return root
@@ -246,4 +250,39 @@ func parseSlashDate(s string) (string, error) {
 	loc, _ := time.LoadLocation("Europe/Copenhagen")
 	year := time.Now().In(loc).Year()
 	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), nil
+}
+
+func newSyncCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "sync",
+		Short: "Sync unposted entries to Google Sheets and Calendar",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			w := sync.NewWorker(d, 0)
+			fmt.Println("Syncing entries...")
+			if err := w.SyncNow(); err != nil {
+				return err
+			}
+			fmt.Println("Sync complete.")
+			return nil
+		},
+	}
+}
+
+func newAuthCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "auth",
+		Short: "Authenticate with Google (OAuth2)",
+		Long: `Run the Google OAuth2 authentication flow.
+
+Prerequisites:
+  1. Go to https://console.cloud.google.com
+  2. Create a project and enable Google Sheets API + Google Calendar API
+  3. Create OAuth2 credentials (Application type: Desktop app)
+  4. Download the credentials JSON file
+  5. Save it to ~/.config/timereg/credentials.json
+  6. Run this command`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return googleapi.RunAuthSetup()
+		},
+	}
 }
