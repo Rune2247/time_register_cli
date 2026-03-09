@@ -107,14 +107,8 @@ func (c *SheetsClient) populateMonthTab(yearMonth string) error {
 			)
 
 			rows = append(rows, []interface{}{
-				fmt.Sprintf("Week %d", week), "", "", "Work:", workFormula, fmt.Sprintf("Lunch: %s", lunchCellRef(currentRow)),
-			})
-			// Store lunch formula in a helper approach - put it directly
-			// We'll fix: put lunch formula in a way that's referenced
-			// Actually let's put work and lunch as separate formula cells
-			rows[len(rows)-1] = []interface{}{
 				fmt.Sprintf("Week %d", week), "", "", "Work:", workFormula, lunchFormula,
-			}
+			})
 
 			rows = append(rows, []interface{}{""}) // blank row after week
 			currentRow += 2
@@ -264,6 +258,3 @@ func daysIn(year int, month time.Month) int {
 	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
 
-func lunchCellRef(row int) string {
-	return fmt.Sprintf("F%d", row)
-}

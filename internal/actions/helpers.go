@@ -27,6 +27,8 @@ func closeOpenEntry(d *db.DB, date, endTime string) error {
 }
 
 // CalcDurationMinutes returns the difference in minutes between two HH:MM times.
+// Handles midnight crossing (e.g. 23:00 to 01:00 = 120 minutes).
+// Returns 0 if the calculated duration is negative and not a midnight crossing.
 func CalcDurationMinutes(startTime, endTime string) (int, error) {
 	start, err := time.Parse("15:04", startTime)
 	if err != nil {
@@ -36,7 +38,12 @@ func CalcDurationMinutes(startTime, endTime string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("parse end time %q: %w", endTime, err)
 	}
-	return int(end.Sub(start).Minutes()), nil
+	diff := int(end.Sub(start).Minutes())
+	if diff < 0 {
+		// Midnight crossing: add 24 hours
+		diff += 24 * 60
+	}
+	return diff, nil
 }
 
 // NowInCopenhagen returns the current time in Europe/Copenhagen as HH:MM.

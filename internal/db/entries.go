@@ -65,6 +65,36 @@ func (d *DB) GetLastOpenEntry(date string) (*models.Entry, error) {
 	return scanEntry(row)
 }
 
+// RemoveEndDay deletes the end_day entry for a date and reopens the last
+// assignment (clears its end_time). Returns true if an entry was removed.
+func (d *DB) RemoveEndDay(date string) (bool, error) {
+	res, err := d.conn.Exec(
+		`DELETE FROM entries WHERE date = ? AND entry_type = 'end_day'`, date,
+	)
+	if err != nil {
+		return false, fmt.Errorf("delete end_day: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return false, nil
+	}
+
+	// Reopen the last assignment on that date (clear its end_time)
+	_, err = d.conn.Exec(
+		`UPDATE entries SET end_time = '', duration_minutes = 0, updated_at = datetime('now')
+		 WHERE id = (
+			SELECT id FROM entries
+			WHERE date = ? AND entry_type IN ('assignment', 'lunch')
+			ORDER BY start_time DESC LIMIT 1
+		 )`, date,
+	)
+	if err != nil {
+		return true, fmt.Errorf("reopen last entry: %w", err)
+	}
+
+	return true, nil
+}
+
 func (d *DB) GetUnsyncedEntries() ([]models.Entry, error) {
 	rows, err := d.conn.Query(
 		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
