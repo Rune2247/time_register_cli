@@ -44,35 +44,111 @@ A background sync worker (running in the systray daemon) picks up new entries an
 time_register_cli/
 ├── cmd/
 │   └── timereg/
-│       └── main.go         # Entry point
+│       └── main.go           # Entry point
 ├── internal/
+│   ├── actions/              # Modular business logic (all features)
+│   │   ├── assignment.go     # StartAssignment
+│   │   ├── lunch.go          # StartLunch
+│   │   ├── endday.go         # EndDay + status output
+│   │   ├── holiday.go        # MarkHoliday
+│   │   ├── status.go         # GetDayStatus, GetWeekStatus
+│   │   ├── config.go         # GetConfig, SetConfig
+│   │   ├── setup.go          # Interactive setup wizard
+│   │   └── helpers.go        # Time/date utilities
 │   ├── cli/
-│   │   ├── tui.go          # Interactive TUI menu
-│   │   ├── commands.go     # Direct subcommand handlers
-│   │   └── backfill.go     # Backfill flow
+│   │   ├── tui.go            # Interactive TUI menu (bubbletea)
+│   │   ├── commands.go       # Cobra subcommand handlers
+│   │   ├── daemon.go         # Daemon + autostart management
+│   │   └── guide.go          # Setup guide + status check
 │   ├── db/
-│   │   ├── sqlite.go       # SQLite connection + migrations
-│   │   ├── entries.go      # Entry CRUD operations
-│   │   └── config.go       # Config CRUD operations
+│   │   ├── sqlite.go         # SQLite connection + migrations
+│   │   ├── entries.go        # Entry CRUD operations
+│   │   └── config.go         # Config key/value CRUD
 │   ├── google/
-│   │   ├── auth.go         # OAuth2 flow
-│   │   ├── sheets.go       # Sheets API integration
-│   │   └── calendar.go     # Calendar API integration
+│   │   ├── auth.go           # OAuth2 flow + token management
+│   │   ├── sheets.go         # Sheets API (month tabs, formulas)
+│   │   └── calendar.go       # Calendar API (events)
 │   ├── sync/
-│   │   └── worker.go       # Background sync goroutine
+│   │   └── worker.go         # Background sync goroutine
 │   ├── systray/
-│   │   └── tray.go         # Ubuntu systray/AppIndicator
+│   │   ├── tray.go           # Systray widget (build tag: systray)
+│   │   ├── icon.go           # Generated tray icon
+│   │   └── stub.go           # Fallback when systray deps missing
 │   └── models/
-│       └── entry.go        # Data structures
+│       └── entry.go          # Data structures
 ├── go.mod
 ├── go.sum
 ├── .gitignore
 └── README.md
 ```
 
+## Prerequisites
+
+- **Go 1.21+** -- [Install Go](https://go.dev/doc/install)
+- **Ubuntu / Linux** -- tested on Ubuntu 24.04+
+- **Google Cloud project** with Sheets API and Calendar API enabled (see `timereg guide`)
+
+### Optional (for systray support)
+
+```bash
+sudo apt install libayatana-appindicator3-dev libgtk-3-dev
+```
+
+Also used by the systray (typically pre-installed on Ubuntu):
+- `zenity` -- input dialogs
+- `notify-send` -- desktop notifications
+
 ## Getting Started
 
-_To be filled in._
+### 1. Build
+
+```bash
+# Basic build (CLI only)
+go build -o timereg ./cmd/timereg/
+
+# Full build with systray support
+go build -tags systray -o timereg ./cmd/timereg/
+```
+
+### 2. Install (optional)
+
+Move the binary somewhere on your PATH:
+
+```bash
+sudo mv timereg /usr/local/bin/
+```
+
+### 3. Set up Google integration
+
+Run the built-in guide for step-by-step instructions:
+
+```bash
+timereg guide
+```
+
+Or check what's already configured:
+
+```bash
+timereg guide status
+```
+
+### 4. Quick start
+
+```bash
+timereg                        # Interactive TUI menu
+timereg start "Task name"      # Start an assignment
+timereg lunch                  # Take lunch
+timereg start "Another task"   # Switch to next assignment
+timereg end                    # End the day
+timereg status                 # View today + week summary
+```
+
+### 5. Systray daemon (optional)
+
+```bash
+timereg daemon                 # Run systray + background sync
+timereg autostart enable       # Start on login
+```
 
 ## Configuration
 
