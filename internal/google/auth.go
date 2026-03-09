@@ -20,7 +20,7 @@ import (
 
 var scopes = []string{
 	sheets.SpreadsheetsScope,
-	calendar.CalendarEventsScope,
+	calendar.CalendarScope,
 }
 
 // tokenPath returns the path to the stored OAuth token.
