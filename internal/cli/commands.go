@@ -328,12 +328,37 @@ func newSyncCmd(d *db.DB) *cobra.Command {
 		Use:   "sync",
 		Short: "Sync unposted entries to Google Sheets and Calendar",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check config first
+			sheetID, _ := d.GetConfig("spreadsheet_id")
+			calID, _ := d.GetConfig("calendar_id")
+			if sheetID == "" && calID == "" {
+				return fmt.Errorf("no spreadsheet or calendar configured. Run 'timereg guide status' to check setup")
+			}
+
+			// Show what will be synced
+			entries, err := d.GetUnsyncedEntries()
+			if err != nil {
+				return fmt.Errorf("check unsynced entries: %w", err)
+			}
+			if len(entries) == 0 {
+				fmt.Println("Everything is up to date — nothing to sync.")
+				return nil
+			}
+
+			fmt.Printf("Syncing %d entries...\n", len(entries))
 			w := sync.NewWorker(d, 0)
-			fmt.Println("Syncing entries...")
 			if err := w.SyncNow(); err != nil {
 				return err
 			}
-			fmt.Println("Sync complete.")
+
+			// Check how many are still unsynced
+			remaining, _ := d.GetUnsyncedEntries()
+			synced := len(entries) - len(remaining)
+			if len(remaining) > 0 {
+				fmt.Printf("Synced %d entries, %d failed (will retry on next sync).\n", synced, len(remaining))
+			} else {
+				fmt.Printf("Synced %d entries successfully.\n", synced)
+			}
 			return nil
 		},
 	}
