@@ -63,21 +63,12 @@ func (w *Worker) run() {
 }
 
 func (w *Worker) syncOnce() error {
-	entries, err := w.db.GetUnsyncedEntries()
-	if err != nil {
-		return fmt.Errorf("get unsynced: %w", err)
-	}
-
-	if len(entries) == 0 {
-		return nil
-	}
-
 	ctx := context.Background()
-
 	spreadsheetID, calendarID := actions.GetGoogleConfig(w.db)
 
 	var sheetsClient *googleapi.SheetsClient
 	var calendarClient *googleapi.CalendarClient
+	var err error
 
 	if spreadsheetID != "" {
 		sheetsClient, err = googleapi.NewSheetsClient(ctx, spreadsheetID)
@@ -93,33 +84,47 @@ func (w *Worker) syncOnce() error {
 		}
 	}
 
-	for _, entry := range entries {
-		w.syncEntry(entry, sheetsClient, calendarClient)
+	// Sync sheets — any entry with a start time
+	if sheetsClient != nil {
+		sheetEntries, err := w.db.GetUnsyncedForSheets()
+		if err != nil {
+			return fmt.Errorf("get unsynced for sheets: %w", err)
+		}
+		for _, entry := range sheetEntries {
+			w.syncToSheets(entry, sheetsClient)
+		}
+	}
+
+	// Sync calendar — only complete entries with end_time
+	if calendarClient != nil {
+		calEntries, err := w.db.GetUnsyncedForCalendar()
+		if err != nil {
+			return fmt.Errorf("get unsynced for calendar: %w", err)
+		}
+		for _, entry := range calEntries {
+			w.syncToCalendar(entry, calendarClient)
+		}
 	}
 
 	return nil
 }
 
-func (w *Worker) syncEntry(entry models.Entry, sheetsClient *googleapi.SheetsClient, calendarClient *googleapi.CalendarClient) {
-	// Sync to Sheets
-	if !entry.PostedToSheets && sheetsClient != nil {
-		if err := sheetsClient.WriteEntry(&entry); err != nil {
-			log.Printf("sheets sync failed for entry %d: %v", entry.ID, err)
-		} else {
-			if err := w.db.MarkPostedToSheets(entry.ID); err != nil {
-				log.Printf("mark posted to sheets failed for entry %d: %v", entry.ID, err)
-			}
+func (w *Worker) syncToSheets(entry models.Entry, client *googleapi.SheetsClient) {
+	if err := client.WriteEntry(&entry); err != nil {
+		log.Printf("sheets sync failed for entry %d: %v", entry.ID, err)
+	} else {
+		if err := w.db.MarkPostedToSheets(entry.ID); err != nil {
+			log.Printf("mark posted to sheets failed for entry %d: %v", entry.ID, err)
 		}
 	}
+}
 
-	// Sync to Calendar
-	if !entry.PostedToCalendar && calendarClient != nil {
-		if err := calendarClient.CreateEvent(&entry); err != nil {
-			log.Printf("calendar sync failed for entry %d: %v", entry.ID, err)
-		} else {
-			if err := w.db.MarkPostedToCalendar(entry.ID); err != nil {
-				log.Printf("mark posted to calendar failed for entry %d: %v", entry.ID, err)
-			}
+func (w *Worker) syncToCalendar(entry models.Entry, client *googleapi.CalendarClient) {
+	if err := client.CreateEvent(&entry); err != nil {
+		log.Printf("calendar sync failed for entry %d: %v", entry.ID, err)
+	} else {
+		if err := w.db.MarkPostedToCalendar(entry.ID); err != nil {
+			log.Printf("mark posted to calendar failed for entry %d: %v", entry.ID, err)
 		}
 	}
 }

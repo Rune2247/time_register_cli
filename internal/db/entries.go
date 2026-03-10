@@ -130,11 +130,42 @@ func (d *DB) ResetSyncFlagsForMonth(yearMonth string) error {
 	return err
 }
 
+// GetUnsyncedForSheets returns entries not yet posted to sheets (any entry with a start time).
+func (d *DB) GetUnsyncedForSheets() ([]models.Entry, error) {
+	rows, err := d.conn.Query(
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		        posted_to_sheets, posted_to_calendar, created_at, updated_at
+		 FROM entries WHERE posted_to_sheets = 0 AND start_time != ''
+		 ORDER BY date ASC, start_time ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query unsynced sheets: %w", err)
+	}
+	defer rows.Close()
+	return scanEntries(rows)
+}
+
+// GetUnsyncedForCalendar returns completed entries not yet posted to calendar (needs end_time).
+func (d *DB) GetUnsyncedForCalendar() ([]models.Entry, error) {
+	rows, err := d.conn.Query(
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		        posted_to_sheets, posted_to_calendar, created_at, updated_at
+		 FROM entries WHERE posted_to_calendar = 0 AND end_time != ''
+		 ORDER BY date ASC, start_time ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query unsynced calendar: %w", err)
+	}
+	defer rows.Close()
+	return scanEntries(rows)
+}
+
+// GetUnsyncedEntries returns entries not yet fully synced (used by status display).
 func (d *DB) GetUnsyncedEntries() ([]models.Entry, error) {
 	rows, err := d.conn.Query(
 		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
 		        posted_to_sheets, posted_to_calendar, created_at, updated_at
-		 FROM entries WHERE (posted_to_sheets = 0 OR posted_to_calendar = 0) AND end_time != ''
+		 FROM entries WHERE (posted_to_sheets = 0 AND start_time != '') OR (posted_to_calendar = 0 AND end_time != '')
 		 ORDER BY date ASC, start_time ASC`,
 	)
 	if err != nil {
