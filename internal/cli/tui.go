@@ -97,6 +97,7 @@ var optionsMenu = []menuItem{
 var backfillTypes = []menuItem{
 	{label: "Start Assignment", value: "assignment"},
 	{label: "Lunch", value: "lunch"},
+	{label: "End Day", value: "end"},
 }
 
 var editFieldOptions = []menuItem{
@@ -525,6 +526,10 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		m.backfillTime = timeStr
 
 		switch m.backfillType {
+		case "end":
+			return m.showResultWithCapture(func() error {
+				return actions.EndDay(m.db, m.backfillDate, m.backfillTime)
+			})
 		case "lunch":
 			return m.showResultWithCapture(func() error {
 				return actions.StartLunch(m.db, m.backfillDate, m.backfillTime)
