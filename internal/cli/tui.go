@@ -64,6 +64,7 @@ const (
 	phaseEditEntryList
 	phaseEditFieldSelect
 	phaseEditValue
+	phaseBreakName
 	phaseOptionsMenu
 	phasePurgeFrom
 	phasePurgeTo
@@ -78,6 +79,7 @@ type menuItem struct {
 var mainMenu = []menuItem{
 	{label: "Start Assignment", value: "start"},
 	{label: "Lunch", value: "lunch"},
+	{label: "Break", value: "break"},
 	{label: "End Day", value: "end"},
 	{label: "Backfill", value: "backfill"},
 	{label: "Edit Entries", value: "edit"},
@@ -97,6 +99,7 @@ var optionsMenu = []menuItem{
 var backfillTypes = []menuItem{
 	{label: "Start Assignment", value: "assignment"},
 	{label: "Lunch", value: "lunch"},
+	{label: "Break", value: "break"},
 	{label: "End Day", value: "end"},
 }
 
@@ -257,7 +260,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect, phaseOptionsMenu:
 		return m.updateMenu(msg)
-	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
+	case phaseInput, phaseBreakName, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
 		return m.updateInput(msg)
 	case phaseResult:
 		return m.updateResult(msg)
@@ -391,6 +394,13 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		m.textInput.Placeholder = "e.g. Client meeting"
 		return m, nil
 
+	case "break":
+		m.phase = phaseBreakName
+		m.inputPrompt = "Break name"
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "e.g. Fitness, Dentist, Nap"
+		return m, nil
+
 	case "lunch":
 		return m.showResultWithCapture(func() error {
 			return actions.StartLunch(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
@@ -481,6 +491,15 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			return actions.StartAssignment(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), value)
 		})
 
+	case phaseBreakName:
+		if value == "" {
+			m.err = fmt.Errorf("break name cannot be empty")
+			return m, nil
+		}
+		return m.showResultWithCapture(func() error {
+			return actions.StartBreak(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), value)
+		})
+
 	case phaseHolidayDate:
 		date := actions.TodayInCopenhagen()
 		if value != "" {
@@ -536,17 +555,27 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			})
 		default:
 			m.phase = phaseBackfillName
-			m.inputPrompt = "Assignment name"
+			if m.backfillType == "break" {
+				m.inputPrompt = "Break name"
+				m.textInput.Placeholder = "e.g. Fitness, Dentist, Nap"
+			} else {
+				m.inputPrompt = "Assignment name"
+				m.textInput.Placeholder = "e.g. Client meeting"
+			}
 			m.textInput.SetValue("")
-			m.textInput.Placeholder = "e.g. Client meeting"
 			m.err = nil
 			return m, nil
 		}
 
 	case phaseBackfillName:
 		if value == "" {
-			m.err = fmt.Errorf("assignment name cannot be empty")
+			m.err = fmt.Errorf("name cannot be empty")
 			return m, nil
+		}
+		if m.backfillType == "break" {
+			return m.showResultWithCapture(func() error {
+				return actions.StartBreak(m.db, m.backfillDate, m.backfillTime, value)
+			})
 		}
 		return m.showResultWithCapture(func() error {
 			return actions.StartAssignment(m.db, m.backfillDate, m.backfillTime, value)
@@ -873,7 +902,7 @@ func (m model) View() string {
 		}
 		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
 
-	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
+	case phaseInput, phaseBreakName, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
 		b.WriteString(fmt.Sprintf("%s:\n\n", m.inputPrompt))
 		b.WriteString("  " + m.textInput.View())
 		if m.err != nil {

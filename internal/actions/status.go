@@ -14,12 +14,13 @@ func GetDayStatus(d *db.DB, date string) (*models.DayStatus, error) {
 		return nil, err
 	}
 
-	work, lunch := models.AccumulateMinutes(entries)
+	work, lunch, brk := models.AccumulateMinutes(entries)
 	return &models.DayStatus{
 		Date:         date,
 		Entries:      entries,
 		WorkMinutes:  work,
 		LunchMinutes: lunch,
+		BreakMinutes: brk,
 	}, nil
 }
 
@@ -44,12 +45,13 @@ func GetWeekStatus(d *db.DB, date string) (*models.WeekStatus, error) {
 		return nil, err
 	}
 
-	work, lunch := models.AccumulateMinutes(entries)
+	work, lunch, brk := models.AccumulateMinutes(entries)
 	return &models.WeekStatus{
 		StartDate:    startDate,
 		EndDate:      endDate,
 		WorkMinutes:  work,
 		LunchMinutes: lunch,
+		BreakMinutes: brk,
 	}, nil
 }
 

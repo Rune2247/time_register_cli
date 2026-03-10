@@ -26,6 +26,7 @@ Syncs to Google Sheets and Google Calendar.`,
 	root.AddCommand(
 		newStartCmd(d),
 		newLunchCmd(d),
+		newBreakCmd(d),
 		newEndCmd(d),
 		newStatusCmd(d),
 		newWeekCmd(d),
@@ -62,6 +63,17 @@ func newLunchCmd(d *db.DB) *cobra.Command {
 		Short: "Start lunch break",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return actions.StartLunch(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
+		},
+	}
+}
+
+func newBreakCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "break <name>",
+		Short: "Start a break (non-work time like fitness, dentist, nap)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return actions.StartBreak(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), args[0])
 		},
 	}
 }

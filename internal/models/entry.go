@@ -21,6 +21,7 @@ type EntryType string
 const (
 	EntryAssignment EntryType = "assignment"
 	EntryLunch      EntryType = "lunch"
+	EntryBreak      EntryType = "break"
 	EntryHoliday    EntryType = "holiday"
 )
 
@@ -43,6 +44,8 @@ func (e *Entry) DisplayName() string {
 	switch e.EntryType {
 	case EntryLunch:
 		return "Lunch"
+	case EntryBreak:
+		return "Break: " + e.Name
 	case EntryHoliday:
 		return "Holiday"
 	default:
@@ -65,8 +68,8 @@ func (e *Entry) FormatLine() string {
 	}
 }
 
-// AccumulateMinutes sums work and lunch minutes from a slice of entries.
-func AccumulateMinutes(entries []Entry) (workMinutes, lunchMinutes int) {
+// AccumulateMinutes sums work, lunch, and break minutes from a slice of entries.
+func AccumulateMinutes(entries []Entry) (workMinutes, lunchMinutes, breakMinutes int) {
 	for _, e := range entries {
 		if e.DurationMinutes <= 0 {
 			continue
@@ -76,6 +79,8 @@ func AccumulateMinutes(entries []Entry) (workMinutes, lunchMinutes int) {
 			workMinutes += e.DurationMinutes
 		case EntryLunch:
 			lunchMinutes += e.DurationMinutes
+		case EntryBreak:
+			breakMinutes += e.DurationMinutes
 		}
 	}
 	return
@@ -83,11 +88,15 @@ func AccumulateMinutes(entries []Entry) (workMinutes, lunchMinutes int) {
 
 // FormatStatusSummary returns a formatted string with day and week hours.
 func FormatStatusSummary(dayStatus *DayStatus, weekStatus *WeekStatus) string {
-	return fmt.Sprintf("Today: %.1fh worked\nThis week: %.1fh worked, %.1fh lunch",
+	s := fmt.Sprintf("Today: %.1fh worked\nThis week: %.1fh worked, %.1fh lunch",
 		float64(dayStatus.WorkMinutes)/60.0,
 		float64(weekStatus.WorkMinutes)/60.0,
 		float64(weekStatus.LunchMinutes)/60.0,
 	)
+	if weekStatus.BreakMinutes > 0 {
+		s += fmt.Sprintf(", %.1fh break", float64(weekStatus.BreakMinutes)/60.0)
+	}
+	return s
 }
 
 type DayStatus struct {
@@ -95,6 +104,7 @@ type DayStatus struct {
 	Entries      []Entry
 	WorkMinutes  int
 	LunchMinutes int
+	BreakMinutes int
 }
 
 type WeekStatus struct {
@@ -103,4 +113,5 @@ type WeekStatus struct {
 	Days         []DayStatus
 	WorkMinutes  int
 	LunchMinutes int
+	BreakMinutes int
 }

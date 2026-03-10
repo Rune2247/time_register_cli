@@ -93,9 +93,10 @@ func (c *SheetsClient) populateMonthTab(yearMonth string) error {
 		if d.Weekday() == time.Sunday || day == daysInMonth {
 			_, week := d.ISOWeek()
 
-			// Work hours formula: SUM of hours column for this week's rows, excluding "Lunch"
+			// Work hours formula: SUM of hours column for this week's rows, excluding "Lunch" and "Break: *"
 			workFormula := fmt.Sprintf(
-				`=SUMPRODUCT((C%d:C%d<>"Lunch")*(C%d:C%d<>"")*(F%d:F%d))`,
+				`=SUMPRODUCT((C%d:C%d<>"Lunch")*(LEFT(C%d:C%d,7)<>"Break: ")*(C%d:C%d<>"")*(F%d:F%d))`,
+				weekStartRow, currentRow-1,
 				weekStartRow, currentRow-1,
 				weekStartRow, currentRow-1,
 				weekStartRow, currentRow-1,
