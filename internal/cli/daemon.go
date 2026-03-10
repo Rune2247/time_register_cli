@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/rlf/time_register_cli/internal/db"
 	trayPkg "github.com/rlf/time_register_cli/internal/systray"
@@ -45,26 +46,33 @@ Use 'timereg daemon restart' to kill any existing daemon and start a new one det
 // RestartDaemon kills any running timereg daemon and starts a new one detached.
 func RestartDaemon() error {
 	// Kill existing daemon
-	_ = exec.Command("pkill", "-f", "timereg daemon").Run()
+	killErr := exec.Command("pkill", "-f", "timereg daemon").Run()
+	if killErr == nil {
+		fmt.Println("Stopped existing daemon")
+		time.Sleep(300 * time.Millisecond)
+	}
 
 	// Find timereg binary
 	binaryPath, err := exec.LookPath("timereg")
 	if err != nil {
 		binaryPath, err = os.Executable()
 		if err != nil {
-			return fmt.Errorf("could not find timereg binary: %w", err)
+			return fmt.Errorf("could not find timereg binary — is it installed? %w", err)
 		}
 	}
+	fmt.Printf("Using binary: %s\n", binaryPath)
 
 	// Log file
 	home, _ := os.UserHomeDir()
 	logDir := filepath.Join(home, ".config", "timereg")
-	_ = os.MkdirAll(logDir, 0755)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("create log directory %s: %w", logDir, err)
+	}
 	logFile := filepath.Join(logDir, "daemon.log")
 
 	lf, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		return fmt.Errorf("open log file: %w", err)
+		return fmt.Errorf("open log file %s: %w", logFile, err)
 	}
 
 	proc := exec.Command(binaryPath, "daemon")
@@ -74,11 +82,23 @@ func RestartDaemon() error {
 
 	if err := proc.Start(); err != nil {
 		lf.Close()
-		return fmt.Errorf("start daemon: %w", err)
+		return fmt.Errorf("failed to start daemon: %w", err)
+	}
+	pid := proc.Process.Pid
+	lf.Close()
+
+	// Verify the process is still running after a brief moment
+	time.Sleep(500 * time.Millisecond)
+	if err := syscall.Kill(pid, 0); err != nil {
+		// Process died — read the log for clues
+		logContent, readErr := os.ReadFile(logFile)
+		if readErr == nil && len(logContent) > 0 {
+			return fmt.Errorf("daemon exited immediately. Log:\n%s", string(logContent))
+		}
+		return fmt.Errorf("daemon exited immediately (pid %d). Check %s for details", pid, logFile)
 	}
 
-	lf.Close()
-	fmt.Printf("Daemon started (pid: %d, log: %s)\n", proc.Process.Pid, logFile)
+	fmt.Printf("Daemon running (pid: %d, log: %s)\n", pid, logFile)
 	return nil
 }
 
