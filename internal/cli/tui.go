@@ -64,6 +64,8 @@ const (
 	phaseEditFieldSelect
 	phaseEditValue
 	phaseOptionsMenu
+	phasePurgeFrom
+	phasePurgeTo
 	phaseResult
 )
 
@@ -86,6 +88,7 @@ var mainMenu = []menuItem{
 var optionsMenu = []menuItem{
 	{label: "Config", value: "config"},
 	{label: "Sync Now", value: "sync"},
+	{label: "Purge Time Range", value: "purge"},
 	{label: "Setup Guide", value: "guide"},
 }
 
@@ -123,6 +126,9 @@ type model struct {
 	editEntries   []models.Entry
 	editEntry     models.Entry
 	editField     string // "name", "start", "end"
+
+	// purge state
+	purgeFrom string
 }
 
 func newModel(d *db.DB) model {
@@ -248,7 +254,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect, phaseOptionsMenu:
 		return m.updateMenu(msg)
-	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue:
+	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
 		return m.updateInput(msg)
 	case phaseResult:
 		return m.updateResult(msg)
@@ -276,6 +282,19 @@ func (m model) goBack() (tea.Model, tea.Cmd) {
 		m.phase = phaseEditEntryList
 		m.cursor = 0
 		m.menuItems = m.entriesToMenuItems()
+		m.err = nil
+		return m, nil
+	case phasePurgeFrom:
+		m.phase = phaseOptionsMenu
+		m.cursor = 0
+		m.menuItems = optionsMenu
+		m.err = nil
+		return m, nil
+	case phasePurgeTo:
+		m.phase = phasePurgeFrom
+		m.inputPrompt = "From date (d/m, e.g. 3/4 for April 3rd)"
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "3/4"
 		m.err = nil
 		return m, nil
 	case phaseEditValue:
@@ -518,6 +537,39 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			return actions.StartAssignment(m.db, m.backfillDate, m.backfillTime, value)
 		})
 
+	case phasePurgeFrom:
+		if value == "" {
+			m.err = fmt.Errorf("date cannot be empty")
+			return m, nil
+		}
+		parsed, err := actions.ParseSlashDate(value)
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		m.purgeFrom = parsed
+		m.phase = phasePurgeTo
+		m.inputPrompt = fmt.Sprintf("To date (d/m, from: %s)", value)
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "10/4"
+		m.err = nil
+		return m, nil
+
+	case phasePurgeTo:
+		if value == "" {
+			m.err = fmt.Errorf("date cannot be empty")
+			return m, nil
+		}
+		parsed, err := actions.ParseSlashDate(value)
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		purgeFrom := m.purgeFrom
+		return m.showResultWithCapture(func() error {
+			return actions.PurgeTimeRange(m.db, purgeFrom, parsed)
+		})
+
 	case phaseEditValue:
 		if value == "" {
 			m.err = fmt.Errorf("value cannot be empty")
@@ -578,6 +630,13 @@ func (m model) handleOptionsSelect(selected string) (tea.Model, tea.Cmd) {
 			w := syncpkg.NewWorker(m.db, 0)
 			return w.SyncNow()
 		})
+	case "purge":
+		m.phase = phasePurgeFrom
+		m.inputPrompt = "From date (d/m, e.g. 3/4 for April 3rd)"
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "3/4"
+		m.err = nil
+		return m, nil
 	case "guide":
 		m.phase = phaseResult
 		m.result = guideQuickText
@@ -795,7 +854,7 @@ func (m model) View() string {
 		}
 		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
 
-	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue:
+	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
 		b.WriteString(fmt.Sprintf("%s:\n\n", m.inputPrompt))
 		b.WriteString("  " + m.textInput.View())
 		if m.err != nil {

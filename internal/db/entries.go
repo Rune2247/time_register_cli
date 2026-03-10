@@ -101,6 +101,17 @@ func (d *DB) DeleteEntry(id int64) error {
 	return err
 }
 
+// DeleteEntriesByDateRange deletes all entries in a date range and returns the count.
+func (d *DB) DeleteEntriesByDateRange(fromDate, toDate string) (int64, error) {
+	res, err := d.conn.Exec(
+		`DELETE FROM entries WHERE date >= ? AND date <= ?`, fromDate, toDate,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete entries in range: %w", err)
+	}
+	return res.RowsAffected()
+}
+
 // ResetSyncFlagsForDate marks all entries on a date as unsynced so they get re-posted.
 func (d *DB) ResetSyncFlagsForDate(date string) error {
 	_, err := d.conn.Exec(
