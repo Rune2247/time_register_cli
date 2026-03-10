@@ -23,6 +23,6 @@ func EndDay(d *db.DB, date, endTime string) error {
 
 	fmt.Printf("Day ended at %s\n", endTime)
 	fmt.Println(models.FormatStatusSummary(dayStatus, weekStatus))
-
+	TriggerSync(d)
 	return nil
 }

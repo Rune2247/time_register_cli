@@ -32,6 +32,7 @@ func UpdateEntryAndResolveOverlaps(d *db.DB, entry models.Entry) error {
 		return fmt.Errorf("reset sync flags: %w", err)
 	}
 
+	TriggerSync(d)
 	return nil
 }
 
@@ -72,6 +73,7 @@ func ResyncDay(d *db.DB, date string) error {
 	}
 
 	fmt.Printf("Day %s marked for re-sync\n", date)
+	TriggerSync(d)
 	return nil
 }
 

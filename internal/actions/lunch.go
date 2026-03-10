@@ -29,7 +29,11 @@ func StartLunch(d *db.DB, date, triggerTime string) error {
 
 	if covering != nil && covering.EndTime != "" {
 		// Closed entry spans lunch time — split it
-		return splitForLunch(d, date, covering, triggerTime)
+		if err := splitForLunch(d, date, covering, triggerTime); err != nil {
+			return err
+		}
+		TriggerSync(d)
+		return nil
 	}
 
 	// Open entry or no covering entry — use original behavior
@@ -51,6 +55,7 @@ func StartLunch(d *db.DB, date, triggerTime string) error {
 	}
 
 	fmt.Printf("Lunch started at %s (id: %d)\n", triggerTime, id)
+	TriggerSync(d)
 	return nil
 }
 

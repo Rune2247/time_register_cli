@@ -26,5 +26,6 @@ func StartAssignment(d *db.DB, date, startTime, name string) error {
 	}
 
 	fmt.Printf("Started assignment %q at %s (id: %d)\n", name, startTime, id)
+	TriggerSync(d)
 	return nil
 }

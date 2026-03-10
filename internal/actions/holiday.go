@@ -20,5 +20,6 @@ func MarkHoliday(d *db.DB, date string) error {
 	}
 
 	fmt.Printf("Marked %s as holiday (id: %d)\n", date, id)
+	TriggerSync(d)
 	return nil
 }
