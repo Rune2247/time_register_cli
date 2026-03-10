@@ -76,7 +76,6 @@ var mainMenu = []menuItem{
 	{label: "Start Assignment", value: "start"},
 	{label: "Lunch", value: "lunch"},
 	{label: "End Day", value: "end"},
-	{label: "Reopen Day", value: "reopen"},
 	{label: "Backfill", value: "backfill"},
 	{label: "Edit Entries", value: "edit"},
 	{label: "Holiday", value: "holiday"},
@@ -93,7 +92,6 @@ var optionsMenu = []menuItem{
 var backfillTypes = []menuItem{
 	{label: "Start Assignment", value: "assignment"},
 	{label: "Lunch", value: "lunch"},
-	{label: "End Day", value: "end"},
 }
 
 var editFieldOptions = []menuItem{
@@ -154,7 +152,7 @@ func (m model) buildStatusHeader() string {
 		var current *models.Entry
 		for i := range entries {
 			e := &entries[i]
-			if e.EndTime == "" && e.EntryType != models.EntryEndDay {
+			if e.EndTime == "" {
 				current = e
 			}
 		}
@@ -164,17 +162,7 @@ func (m model) buildStatusHeader() string {
 			mins := elapsed % 60
 			b.WriteString(dimStyle.Render(fmt.Sprintf("  Current: %s (%dh%02dm)", current.DisplayName(), h, mins)))
 		} else {
-			hasEndDay := false
-			for _, e := range entries {
-				if e.EntryType == models.EntryEndDay {
-					hasEndDay = true
-				}
-			}
-			if hasEndDay {
-				b.WriteString(dimStyle.Render("  Current: Day ended"))
-			} else {
-				b.WriteString(dimStyle.Render("  Current: No active assignment"))
-			}
+			b.WriteString(dimStyle.Render("  Current: No active assignment"))
 		}
 		b.WriteString("\n")
 
@@ -425,11 +413,6 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 			return actions.PrintStatus(m.db, actions.TodayInCopenhagen())
 		})
 
-	case "reopen":
-		return m.showResultWithCapture(func() error {
-			return actions.ReopenDay(m.db, actions.TodayInCopenhagen())
-		})
-
 	case "options":
 		m.phase = phaseOptionsMenu
 		m.cursor = 0
@@ -513,10 +496,6 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		m.backfillTime = timeStr
 
 		switch m.backfillType {
-		case "end":
-			return m.showResultWithCapture(func() error {
-				return actions.EndDay(m.db, m.backfillDate, m.backfillTime)
-			})
 		case "lunch":
 			return m.showResultWithCapture(func() error {
 				return actions.StartLunch(m.db, m.backfillDate, m.backfillTime)

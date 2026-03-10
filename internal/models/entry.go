@@ -21,7 +21,6 @@ type EntryType string
 const (
 	EntryAssignment EntryType = "assignment"
 	EntryLunch      EntryType = "lunch"
-	EntryEndDay     EntryType = "end_day"
 	EntryHoliday    EntryType = "holiday"
 )
 
@@ -44,8 +43,6 @@ func (e *Entry) DisplayName() string {
 	switch e.EntryType {
 	case EntryLunch:
 		return "Lunch"
-	case EntryEndDay:
-		return "End Day"
 	case EntryHoliday:
 		return "Holiday"
 	default:
@@ -59,8 +56,6 @@ func (e *Entry) FormatLine() string {
 	switch e.EntryType {
 	case EntryHoliday:
 		return "           Holiday"
-	case EntryEndDay:
-		return fmt.Sprintf("%s       %s", e.StartTime, name)
 	default:
 		end := e.EndTime
 		if end == "" {

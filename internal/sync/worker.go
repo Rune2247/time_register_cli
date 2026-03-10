@@ -114,14 +114,6 @@ func (w *Worker) syncEntry(entry models.Entry, sheetsClient *googleapi.SheetsCli
 
 	// Sync to Calendar
 	if !entry.PostedToCalendar && calendarClient != nil {
-		// Skip end_day entries — they're just markers
-		if entry.EntryType == models.EntryEndDay {
-			if err := w.db.MarkPostedToCalendar(entry.ID); err != nil {
-				log.Printf("mark posted to calendar failed for entry %d: %v", entry.ID, err)
-			}
-			return
-		}
-
 		if err := calendarClient.CreateEvent(&entry); err != nil {
 			log.Printf("calendar sync failed for entry %d: %v", entry.ID, err)
 		} else {

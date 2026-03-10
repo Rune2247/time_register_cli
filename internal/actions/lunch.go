@@ -19,7 +19,7 @@ func StartLunch(d *db.DB, date, triggerTime string) error {
 	var covering *models.Entry
 	for i := range entries {
 		e := &entries[i]
-		if e.EntryType == models.EntryEndDay || e.EntryType == models.EntryHoliday {
+		if e.EntryType == models.EntryHoliday {
 			continue
 		}
 		if e.StartTime <= triggerTime && (e.EndTime == "" || e.EndTime > triggerTime) {

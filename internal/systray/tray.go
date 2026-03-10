@@ -186,19 +186,12 @@ func (t *Tray) updateStatus() {
 
 	var current *models.Entry
 	for i := range entries {
-		if entries[i].EndTime == "" && entries[i].EntryType != models.EntryEndDay {
+		if entries[i].EndTime == "" {
 			current = &entries[i]
 		}
 	}
 
 	if current == nil {
-		for _, e := range entries {
-			if e.EntryType == models.EntryEndDay {
-				t.mStatus.SetTitle("Day ended")
-				systray.SetTitle("TR")
-				return
-			}
-		}
 		t.mStatus.SetTitle("No active assignment")
 		systray.SetTitle("TR")
 		return

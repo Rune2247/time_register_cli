@@ -34,10 +34,6 @@ func (c *CalendarClient) CreateEvent(entry *models.Entry) error {
 		return fmt.Errorf("entry has no end time")
 	}
 
-	if entry.EntryType == models.EntryEndDay {
-		return nil
-	}
-
 	title := entry.DisplayName()
 	loc := models.CopenhagenTZ
 

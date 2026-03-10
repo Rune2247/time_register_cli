@@ -34,7 +34,6 @@ Syncs to Google Sheets and Google Calendar.`,
 		newEditCmd(d),
 		newHolidayCmd(d),
 		newConfigCmd(d),
-		newReopenCmd(d),
 		newSyncCmd(d),
 		newAuthCmd(),
 		newGuideCmd(d),
@@ -72,31 +71,6 @@ func newEndCmd(d *db.DB) *cobra.Command {
 		Short: "End the day",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return actions.EndDay(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
-		},
-	}
-}
-
-func newReopenCmd(d *db.DB) *cobra.Command {
-	return &cobra.Command{
-		Use:   "reopen [d/m]",
-		Short: "Remove end-of-day and reopen a day for more entries",
-		Long: `Remove the end-of-day marker for a date, allowing you to add more entries.
-Defaults to today if no date is given.
-
-Examples:
-  timereg reopen           Reopen today
-  timereg reopen 9/3       Reopen March 9th`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			date := actions.TodayInCopenhagen()
-			if len(args) == 1 {
-				parsed, err := actions.ParseSlashDate(args[0])
-				if err != nil {
-					return err
-				}
-				date = parsed
-			}
-			return actions.ReopenDay(d, date)
 		},
 	}
 }

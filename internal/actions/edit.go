@@ -94,7 +94,7 @@ func resolveOverlaps(d *db.DB, date string, editedID int64) error {
 	}
 
 	for _, other := range entries {
-		if other.ID == editedID || other.EntryType == models.EntryEndDay {
+		if other.ID == editedID {
 			continue
 		}
 		if other.StartTime == "" || other.EndTime == "" {
