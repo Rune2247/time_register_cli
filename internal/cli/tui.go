@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/rlf/time_register_cli/internal/actions"
 	"github.com/rlf/time_register_cli/internal/db"
+	googleapi "github.com/rlf/time_register_cli/internal/google"
 )
 
 const guideQuickText = `Setup Guide
@@ -92,6 +93,7 @@ type model struct {
 	result        string
 	err           error
 	quitting      bool
+	statusHeader  string
 
 	// backfill state
 	backfillType string
@@ -105,12 +107,90 @@ func newModel(d *db.DB) model {
 	ti.CharLimit = 100
 	ti.Width = 40
 
-	return model{
+	m := model{
 		db:        d,
 		phase:     phaseMenu,
 		menuItems: mainMenu,
 		textInput: ti,
 	}
+	m.statusHeader = m.buildStatusHeader()
+	return m
+}
+
+func (m model) buildStatusHeader() string {
+	var b strings.Builder
+
+	today := actions.TodayInCopenhagen()
+	now := actions.NowInCopenhagen()
+
+	// Current assignment
+	entries, err := m.db.GetEntriesByDate(today)
+	if err == nil {
+		var current string
+		var currentStart string
+		for _, e := range entries {
+			if e.EndTime == "" && e.EntryType != "end_day" {
+				if e.EntryType == "lunch" {
+					current = "Lunch"
+				} else {
+					current = e.Name
+				}
+				currentStart = e.StartTime
+			}
+		}
+		if current != "" {
+			elapsed, _ := actions.CalcDurationMinutes(currentStart, now)
+			h := elapsed / 60
+			mins := elapsed % 60
+			b.WriteString(dimStyle.Render(fmt.Sprintf("  Current: %s (%dh%02dm)", current, h, mins)))
+		} else {
+			hasEndDay := false
+			for _, e := range entries {
+				if e.EntryType == "end_day" {
+					hasEndDay = true
+				}
+			}
+			if hasEndDay {
+				b.WriteString(dimStyle.Render("  Current: Day ended"))
+			} else {
+				b.WriteString(dimStyle.Render("  Current: No active assignment"))
+			}
+		}
+		b.WriteString("\n")
+
+		// Today's hours
+		dayStatus, err := actions.GetDayStatus(m.db, today)
+		if err == nil {
+			b.WriteString(dimStyle.Render(fmt.Sprintf("  Today:   %.1fh worked", float64(dayStatus.WorkMinutes)/60.0)))
+			b.WriteString("\n")
+		}
+	}
+
+	// Google connection
+	sheetID, _ := m.db.GetConfig("spreadsheet_id")
+	calID, _ := m.db.GetConfig("calendar_id")
+
+	googleStatus := "not configured"
+	if sheetID != "" && calID != "" {
+		if googleapi.IsAuthenticated() {
+			googleStatus = "connected"
+		} else {
+			googleStatus = "not authenticated"
+		}
+	} else if sheetID != "" || calID != "" {
+		googleStatus = "partially configured"
+	}
+	b.WriteString(dimStyle.Render(fmt.Sprintf("  Google:  %s", googleStatus)))
+	b.WriteString("\n")
+
+	// Unsynced entries
+	unsynced, err := m.db.GetUnsyncedEntries()
+	if err == nil && len(unsynced) > 0 {
+		b.WriteString(dimStyle.Render(fmt.Sprintf("  Pending: %d entries to sync", len(unsynced))))
+		b.WriteString("\n")
+	}
+
+	return b.String()
 }
 
 func RunTUI(d *db.DB) error {
@@ -403,6 +483,7 @@ func (m model) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.menuItems = mainMenu
 			m.err = nil
 			m.result = ""
+			m.statusHeader = m.buildStatusHeader()
 			return m, nil
 		}
 	}
@@ -421,7 +502,8 @@ func (m model) View() string {
 
 	switch m.phase {
 	case phaseMenu:
-		b.WriteString("What would you like to do?\n\n")
+		b.WriteString(m.statusHeader)
+		b.WriteString("\n")
 		for i, item := range m.menuItems {
 			if i == m.cursor {
 				b.WriteString(selectedStyle.Render(fmt.Sprintf("  > %s", item.label)))
