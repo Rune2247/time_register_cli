@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -371,9 +372,11 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 	if m.phase == phaseBackfillType {
 		m.backfillType = selected
 		m.phase = phaseBackfillDate
+		now := time.Now().In(models.CopenhagenTZ)
+		todaySlash := fmt.Sprintf("%d/%d", now.Day(), int(now.Month()))
 		m.inputPrompt = "Date (d/m, e.g. 3/4 for April 3rd)"
 		m.textInput.SetValue("")
-		m.textInput.Placeholder = "3/4"
+		m.textInput.Placeholder = todaySlash
 		return m, nil
 	}
 
