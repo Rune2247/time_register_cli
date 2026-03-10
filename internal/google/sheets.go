@@ -72,7 +72,7 @@ func (c *SheetsClient) populateMonthTab(yearMonth string) error {
 	var rows [][]interface{}
 
 	// Header row
-	rows = append(rows, []interface{}{"Date", "Day", "Assignment", "Start", "End", "Hours"})
+	rows = append(rows, []interface{}{"Date", "Day", "Assignment", "Start", "End", "Hours", ""})
 
 	dataStartRow := 2 // 1-indexed, row after header
 	currentRow := dataStartRow
@@ -86,16 +86,16 @@ func (c *SheetsClient) populateMonthTab(yearMonth string) error {
 		dayName := d.Weekday().String()[:3]
 		dateStr := d.Format("2006-01-02")
 
-		rows = append(rows, []interface{}{dateStr, dayName, "", "", "", ""})
+		rows = append(rows, []interface{}{dateStr, dayName, "", "", "", "", ""})
 		currentRow++
 
 		// After Sunday, insert week summary
 		if d.Weekday() == time.Sunday || day == daysInMonth {
 			_, week := d.ISOWeek()
 
-			// Work hours formula: SUM of hours column for this week's rows, excluding "Lunch" and "Break: *"
+			// Work hours formula: SUM of hours column for this week's rows, excluding "Lunch" and "Break"
 			workFormula := fmt.Sprintf(
-				`=SUMPRODUCT((C%d:C%d<>"Lunch")*(LEFT(C%d:C%d,7)<>"Break: ")*(C%d:C%d<>"")*(F%d:F%d))`,
+				`=SUMPRODUCT((C%d:C%d<>"Lunch")*(C%d:C%d<>"Break")*(C%d:C%d<>"")*(F%d:F%d))`,
 				weekStartRow, currentRow-1,
 				weekStartRow, currentRow-1,
 				weekStartRow, currentRow-1,
@@ -106,12 +106,17 @@ func (c *SheetsClient) populateMonthTab(yearMonth string) error {
 				weekStartRow, currentRow-1,
 				weekStartRow, currentRow-1,
 			)
+			breakFormula := fmt.Sprintf(
+				`=SUMPRODUCT((C%d:C%d="Break")*(F%d:F%d))`,
+				weekStartRow, currentRow-1,
+				weekStartRow, currentRow-1,
+			)
 
 			rows = append(rows, []interface{}{
-				fmt.Sprintf("Week %d", week), "", "", "Work:", workFormula, lunchFormula,
+				fmt.Sprintf("Week %d", week), "", "", "Work:", workFormula, lunchFormula, breakFormula,
 			})
 
-			rows = append(rows, []interface{}{""}) // blank row after week
+			rows = append(rows, []interface{}{"", "", "", "", "", "", ""}) // blank row after week
 			currentRow += 2
 			weekStartRow = currentRow
 		}
@@ -129,8 +134,13 @@ func (c *SheetsClient) populateMonthTab(yearMonth string) error {
 		dataStartRow, currentRow-1,
 		dataStartRow, currentRow-1,
 	)
+	monthBreakFormula := fmt.Sprintf(
+		`=SUMPRODUCT((LEFT(A%d:A%d,4)="Week")*(G%d:G%d))`,
+		dataStartRow, currentRow-1,
+		dataStartRow, currentRow-1,
+	)
 
-	rows = append(rows, []interface{}{"Month Total", "", "", "", monthWorkFormula, monthLunchFormula})
+	rows = append(rows, []interface{}{"Month Total", "", "", "", monthWorkFormula, monthLunchFormula, monthBreakFormula})
 
 	// Year accumulated: try to reference previous month
 	prevMonth := t.AddDate(0, -1, 0)
@@ -143,8 +153,12 @@ func (c *SheetsClient) populateMonthTab(yearMonth string) error {
 		`=IFERROR('%s'!F%d,0)+F%d`,
 		prevMonthTab, currentRow+1, currentRow,
 	)
+	yearBreakFormula := fmt.Sprintf(
+		`=IFERROR('%s'!G%d,0)+G%d`,
+		prevMonthTab, currentRow+1, currentRow,
+	)
 
-	rows = append(rows, []interface{}{"Year Accumulated", "", "", "", yearWorkFormula, yearLunchFormula})
+	rows = append(rows, []interface{}{"Year Accumulated", "", "", "", yearWorkFormula, yearLunchFormula, yearBreakFormula})
 
 	// Write all rows
 	rangeStr := fmt.Sprintf("'%s'!A1", yearMonth)
@@ -176,7 +190,7 @@ func (c *SheetsClient) WriteEntry(entry *models.Entry) error {
 	}
 
 	// Read all values to find where to insert
-	rangeStr := fmt.Sprintf("'%s'!A:F", yearMonth)
+	rangeStr := fmt.Sprintf("'%s'!A:G", yearMonth)
 	resp, err := c.srv.Spreadsheets.Values.Get(c.spreadsheetID, rangeStr).Do()
 	if err != nil {
 		return fmt.Errorf("read sheet: %w", err)
@@ -232,12 +246,12 @@ func (c *SheetsClient) WriteEntry(entry *models.Entry) error {
 	}
 
 	// Write the entry data
-	writeRange := fmt.Sprintf("'%s'!A%d:F%d", yearMonth, insertRow, insertRow)
+	writeRange := fmt.Sprintf("'%s'!A%d:G%d", yearMonth, insertRow, insertRow)
 	dayName := t.Weekday().String()[:3]
 
 	vr := &sheets.ValueRange{
 		Values: [][]interface{}{
-			{dateStr, dayName, name, entry.StartTime, entry.EndTime, hours},
+			{dateStr, dayName, name, entry.StartTime, entry.EndTime, hours, ""},
 		},
 	}
 

@@ -7,7 +7,7 @@ import (
 	"github.com/rlf/time_register_cli/internal/models"
 )
 
-func StartBreak(d *db.DB, date, startTime, name string) error {
+func StartBreak(d *db.DB, date, startTime string) error {
 	if err := closeOpenEntry(d, date, startTime); err != nil {
 		return err
 	}
@@ -15,7 +15,7 @@ func StartBreak(d *db.DB, date, startTime, name string) error {
 	entry := &models.Entry{
 		Date:      date,
 		EntryType: models.EntryBreak,
-		Name:      name,
+		Name:      "Break",
 		StartTime: startTime,
 		EndTime:   "",
 	}
@@ -25,7 +25,7 @@ func StartBreak(d *db.DB, date, startTime, name string) error {
 		return fmt.Errorf("insert break: %w", err)
 	}
 
-	fmt.Printf("Started break %q at %s (id: %d)\n", name, startTime, id)
+	fmt.Printf("Started break at %s (id: %d)\n", startTime, id)
 	TriggerSync(d)
 	return nil
 }

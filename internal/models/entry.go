@@ -45,7 +45,7 @@ func (e *Entry) DisplayName() string {
 	case EntryLunch:
 		return "Lunch"
 	case EntryBreak:
-		return "Break: " + e.Name
+		return "Break"
 	case EntryHoliday:
 		return "Holiday"
 	default:

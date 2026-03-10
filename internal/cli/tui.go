@@ -64,7 +64,6 @@ const (
 	phaseEditEntryList
 	phaseEditFieldSelect
 	phaseEditValue
-	phaseBreakName
 	phaseOptionsMenu
 	phasePurgeFrom
 	phasePurgeTo
@@ -267,7 +266,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect, phaseOptionsMenu:
 		return m.updateMenu(msg)
-	case phaseInput, phaseBreakName, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
+	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
 		return m.updateInput(msg)
 	case phaseResult:
 		return m.updateResult(msg)
@@ -402,11 +401,9 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "break":
-		m.phase = phaseBreakName
-		m.inputPrompt = "Break name"
-		m.textInput.SetValue("")
-		m.textInput.Placeholder = "e.g. Fitness, Dentist, Nap"
-		return m, nil
+		return m.showResultWithCapture(func() error {
+			return actions.StartBreak(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
+		})
 
 	case "lunch":
 		return m.showResultWithCapture(func() error {
@@ -498,15 +495,6 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			return actions.StartAssignment(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), value)
 		})
 
-	case phaseBreakName:
-		if value == "" {
-			m.err = fmt.Errorf("break name cannot be empty")
-			return m, nil
-		}
-		return m.showResultWithCapture(func() error {
-			return actions.StartBreak(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), value)
-		})
-
 	case phaseHolidayDate:
 		date := actions.TodayInCopenhagen()
 		if value != "" {
@@ -560,15 +548,14 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			return m.showResultWithCapture(func() error {
 				return actions.StartLunch(m.db, m.backfillDate, m.backfillTime)
 			})
+		case "break":
+			return m.showResultWithCapture(func() error {
+				return actions.StartBreak(m.db, m.backfillDate, m.backfillTime)
+			})
 		default:
 			m.phase = phaseBackfillName
-			if m.backfillType == "break" {
-				m.inputPrompt = "Break name"
-				m.textInput.Placeholder = "e.g. Fitness, Dentist, Nap"
-			} else {
-				m.inputPrompt = "Assignment name"
-				m.textInput.Placeholder = "e.g. Client meeting"
-			}
+			m.inputPrompt = "Assignment name"
+			m.textInput.Placeholder = "e.g. Client meeting"
 			m.textInput.SetValue("")
 			m.err = nil
 			return m, nil
@@ -578,11 +565,6 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		if value == "" {
 			m.err = fmt.Errorf("name cannot be empty")
 			return m, nil
-		}
-		if m.backfillType == "break" {
-			return m.showResultWithCapture(func() error {
-				return actions.StartBreak(m.db, m.backfillDate, m.backfillTime, value)
-			})
 		}
 		return m.showResultWithCapture(func() error {
 			return actions.StartAssignment(m.db, m.backfillDate, m.backfillTime, value)
@@ -909,7 +891,7 @@ func (m model) View() string {
 		}
 		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
 
-	case phaseInput, phaseBreakName, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
+	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
 		b.WriteString(fmt.Sprintf("%s:\n\n", m.inputPrompt))
 		b.WriteString("  " + m.textInput.View())
 		if m.err != nil {

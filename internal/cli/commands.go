@@ -69,11 +69,10 @@ func newLunchCmd(d *db.DB) *cobra.Command {
 
 func newBreakCmd(d *db.DB) *cobra.Command {
 	return &cobra.Command{
-		Use:   "break <name>",
+		Use:   "break",
 		Short: "Start a break (non-work time like fitness, dentist, nap)",
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return actions.StartBreak(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), args[0])
+			return actions.StartBreak(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
 		},
 	}
 }
@@ -111,6 +110,9 @@ func newWeekCmd(d *db.DB) *cobra.Command {
 			fmt.Printf("Week %s to %s\n", weekStatus.StartDate, weekStatus.EndDate)
 			fmt.Printf("Work: %.1f hours\n", float64(weekStatus.WorkMinutes)/60.0)
 			fmt.Printf("Lunch: %.1f hours\n", float64(weekStatus.LunchMinutes)/60.0)
+			if weekStatus.BreakMinutes > 0 {
+				fmt.Printf("Break: %.1f hours\n", float64(weekStatus.BreakMinutes)/60.0)
+			}
 			return nil
 		},
 	}
@@ -128,14 +130,15 @@ func newBackfillCmd(d *db.DB) *cobra.Command {
 
 func newBacklogCmd(d *db.DB) *cobra.Command {
 	return &cobra.Command{
-		Use:   "backlog <day> <month> <time> <name|end|lunch>",
+		Use:   "backlog <day> <month> <time> <name|end|lunch|break>",
 		Short: "Quick add past entry",
 		Long: `Quick add a past entry without prompts.
 
 Examples:
   timereg backlog 3 4 830 "Client meeting"   → assignment on April 3rd at 08:30
   timereg backlog 3 4 1600 end               → end day on April 3rd at 16:00
-  timereg backlog 3 4 1200 lunch             → lunch on April 3rd at 12:00`,
+  timereg backlog 3 4 1200 lunch             → lunch on April 3rd at 12:00
+  timereg backlog 3 4 1400 break             → break on April 3rd at 14:00`,
 		Args: cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			date, err := actions.ParseBacklogDate(args[0], args[1])
@@ -152,6 +155,8 @@ Examples:
 				return actions.EndDay(d, date, timeStr)
 			case "lunch":
 				return actions.StartLunch(d, date, timeStr)
+			case "break":
+				return actions.StartBreak(d, date, timeStr)
 			default:
 				return actions.StartAssignment(d, date, timeStr, args[3])
 			}
