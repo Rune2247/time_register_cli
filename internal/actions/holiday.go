@@ -8,6 +8,20 @@ import (
 )
 
 func MarkHoliday(d *db.DB, date string) error {
+	// Delete any existing entries for the day
+	existing, err := d.GetEntriesByDate(date)
+	if err != nil {
+		return fmt.Errorf("get entries: %w", err)
+	}
+	for _, e := range existing {
+		if err := d.DeleteEntry(e.ID); err != nil {
+			return fmt.Errorf("delete entry %d: %w", e.ID, err)
+		}
+	}
+	if len(existing) > 0 {
+		fmt.Printf("Cleared %d existing entries for %s\n", len(existing), date)
+	}
+
 	entry := &models.Entry{
 		Date:      date,
 		EntryType: models.EntryHoliday,

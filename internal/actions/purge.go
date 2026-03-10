@@ -70,19 +70,12 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 		return fmt.Errorf("delete entries: %w", err)
 	}
 
-	// Reset sheet tabs for affected months and re-sync remaining entries
+	// Rebuild affected month tabs with remaining entries
 	if sheetID != "" {
 		sc, err := googleapi.NewSheetsClient(ctx, sheetID)
 		if err != nil {
 			fmt.Printf("Warning: sheets client error: %v\n", err)
 		} else {
-			if err := sc.ResetMonthTabs(fromDate, toDate); err != nil {
-				fmt.Printf("Warning: could not reset sheet tabs: %v\n", err)
-			} else {
-				fmt.Println("Reset spreadsheet tabs")
-			}
-
-			// Reset sync flags for remaining entries in affected months so they re-sync
 			done := map[string]bool{}
 			for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
 				ym := day.Format("2006-01")
@@ -90,8 +83,24 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 					continue
 				}
 				done[ym] = true
-				if err := d.ResetSyncFlagsForMonth(ym); err != nil {
-					fmt.Printf("Warning: could not reset sync flags for %s: %v\n", ym, err)
+
+				mt, _ := time.Parse("2006-01", ym)
+				firstDay := mt.Format("2006-01-02")
+				lastDay := time.Date(mt.Year(), mt.Month()+1, 0, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+
+				remaining, err := d.GetEntriesByDateRange(firstDay, lastDay)
+				if err != nil {
+					fmt.Printf("Warning: could not get entries for %s: %v\n", ym, err)
+					continue
+				}
+
+				if err := sc.WriteMonthTab(ym, remaining); err != nil {
+					fmt.Printf("Warning: could not rebuild sheet tab %s: %v\n", ym, err)
+				} else {
+					for _, e := range remaining {
+						d.MarkPostedToSheets(e.ID)
+					}
+					fmt.Printf("Rebuilt sheet tab %s\n", ym)
 				}
 			}
 		}

@@ -45,7 +45,7 @@ const guideQuickText = `Setup Guide
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
 	resultStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 )

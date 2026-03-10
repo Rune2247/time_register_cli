@@ -3,12 +3,13 @@ package actions
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
 )
 
-// TriggerSync pushes unsynced entries to Google Sheets immediately.
+// TriggerSync rebuilds sheet tabs that have unsynced entries.
 // Calendar sync is left to the daemon since it needs complete entries.
 func TriggerSync(d *db.DB) {
 	entries, err := d.GetUnsyncedForSheets()
@@ -32,27 +33,49 @@ func TriggerSync(d *db.DB) {
 		return
 	}
 
+	// Collect months that need rebuilding
+	months := map[string]bool{}
+	for _, e := range entries {
+		t, err := time.Parse("2006-01-02", e.Date)
+		if err != nil {
+			continue
+		}
+		months[t.Format("2006-01")] = true
+	}
+
 	synced := 0
 	failed := 0
-	for _, entry := range entries {
-		if err := sheetsClient.WriteEntry(&entry); err != nil {
-			fmt.Printf("Sync: sheets failed for %s %s: %v\n", entry.Date, entry.DisplayName(), err)
+	for ym := range months {
+		t, _ := time.Parse("2006-01", ym)
+		firstDay := t.Format("2006-01-02")
+		lastDay := time.Date(t.Year(), t.Month()+1, 0, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+
+		allEntries, err := d.GetEntriesByDateRange(firstDay, lastDay)
+		if err != nil {
+			fmt.Printf("Sync: could not get entries for %s: %v\n", ym, err)
 			failed++
-		} else {
-			if err := d.MarkPostedToSheets(entry.ID); err != nil {
-				fmt.Printf("Sync: could not mark entry %d as posted to sheets: %v\n", entry.ID, err)
-			}
-			synced++
+			continue
 		}
+
+		if err := sheetsClient.WriteMonthTab(ym, allEntries); err != nil {
+			fmt.Printf("Sync: sheets failed for %s: %v\n", ym, err)
+			failed++
+			continue
+		}
+
+		for _, e := range allEntries {
+			d.MarkPostedToSheets(e.ID)
+		}
+		synced += len(allEntries)
 	}
 
 	if synced > 0 {
 		fmt.Printf("Synced %d entries to sheets", synced)
 		if failed > 0 {
-			fmt.Printf(" (%d failed)", failed)
+			fmt.Printf(" (%d months failed)", failed)
 		}
 		fmt.Println()
 	} else if failed > 0 {
-		fmt.Printf("Sync failed: %d entries\n", failed)
+		fmt.Printf("Sync failed: %d months\n", failed)
 	}
 }

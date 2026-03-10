@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
+	"github.com/rlf/time_register_cli/internal/models"
 )
 
 // RebuildCalendar deletes all calendar events and re-syncs from the database.
@@ -81,40 +83,44 @@ func RebuildSheets(d *db.DB) error {
 		return nil
 	}
 
-	fromDate := entries[0].Date
-	toDate := entries[len(entries)-1].Date
-
-	fmt.Printf("Resetting sheet tabs for %s to %s...\n", fromDate, toDate)
-	if err := sc.ResetMonthTabs(fromDate, toDate); err != nil {
-		return fmt.Errorf("reset tabs: %w", err)
+	// Group entries by month
+	months := map[string][]int{} // yearMonth -> indices into entries
+	for i, e := range entries {
+		t, err := time.Parse("2006-01-02", e.Date)
+		if err != nil {
+			continue
+		}
+		ym := t.Format("2006-01")
+		months[ym] = append(months[ym], i)
 	}
 
-	if err := d.ResetAllSheetsFlags(); err != nil {
-		return fmt.Errorf("reset sheets flags: %w", err)
-	}
-
-	sheetsEntries, err := d.GetUnsyncedForSheets()
-	if err != nil {
-		return fmt.Errorf("get unsynced: %w", err)
-	}
-
-	fmt.Printf("Re-syncing %d entries to sheets...\n", len(sheetsEntries))
+	// Rebuild each month tab
 	failed := 0
-	for _, entry := range sheetsEntries {
-		if err := sc.WriteEntry(&entry); err != nil {
-			log.Printf("sheets sync failed for entry %d: %v", entry.ID, err)
+	total := 0
+	for ym, indices := range months {
+		monthEntries := make([]models.Entry, len(indices))
+		for j, idx := range indices {
+			monthEntries[j] = entries[idx]
+		}
+
+		if err := sc.WriteMonthTab(ym, monthEntries); err != nil {
+			fmt.Printf("Failed to rebuild %s: %v\n", ym, err)
 			failed++
 			continue
 		}
-		if err := d.MarkPostedToSheets(entry.ID); err != nil {
-			log.Printf("mark posted failed for entry %d: %v", entry.ID, err)
-		}
+		total += len(monthEntries)
+		fmt.Printf("Rebuilt %s (%d entries)\n", ym, len(monthEntries))
+	}
+
+	// Mark all as synced to sheets
+	for _, e := range entries {
+		d.MarkPostedToSheets(e.ID)
 	}
 
 	if failed > 0 {
-		fmt.Printf("Sheets rebuild complete (%d failed)\n", failed)
+		fmt.Printf("Sheets rebuild complete (%d months failed)\n", failed)
 	} else {
-		fmt.Printf("Sheets rebuild complete (%d entries synced)\n", len(sheetsEntries))
+		fmt.Printf("Sheets rebuild complete (%d entries across %d months)\n", total, len(months))
 	}
 	return nil
 }
