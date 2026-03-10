@@ -33,6 +33,7 @@ Syncs to Google Sheets and Google Calendar.`,
 		newBacklogCmd(d),
 		newEditCmd(d),
 		newHolidayCmd(d),
+		newPurgeCmd(d),
 		newConfigCmd(d),
 		newSyncCmd(d),
 		newAuthCmd(),
@@ -176,6 +177,30 @@ func newHolidayCmd(d *db.DB) *cobra.Command {
 				date = parsed
 			}
 			return actions.MarkHoliday(d, date)
+		},
+	}
+}
+
+func newPurgeCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "purge <from d/m> <to d/m>",
+		Short: "Delete all entries in a date range from SQLite, Calendar, and Sheets",
+		Long: `Purge all entries between two dates (inclusive).
+
+Examples:
+  timereg purge 1/3 11/3     Purge March 1st to 11th
+  timereg purge 15/1 28/2    Purge Jan 15th to Feb 28th`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fromDate, err := actions.ParseSlashDate(args[0])
+			if err != nil {
+				return fmt.Errorf("from date: %w", err)
+			}
+			toDate, err := actions.ParseSlashDate(args[1])
+			if err != nil {
+				return fmt.Errorf("to date: %w", err)
+			}
+			return actions.PurgeTimeRange(d, fromDate, toDate)
 		},
 	}
 }
