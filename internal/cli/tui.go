@@ -13,6 +13,7 @@ import (
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
 	"github.com/rlf/time_register_cli/internal/models"
+	syncpkg "github.com/rlf/time_register_cli/internal/sync"
 )
 
 const guideQuickText = `Setup Guide
@@ -62,6 +63,7 @@ const (
 	phaseEditEntryList
 	phaseEditFieldSelect
 	phaseEditValue
+	phaseOptionsMenu
 	phaseResult
 )
 
@@ -79,7 +81,12 @@ var mainMenu = []menuItem{
 	{label: "Edit Entries", value: "edit"},
 	{label: "Holiday", value: "holiday"},
 	{label: "Status", value: "status"},
+	{label: "Options", value: "options"},
+}
+
+var optionsMenu = []menuItem{
 	{label: "Config", value: "config"},
+	{label: "Sync Now", value: "sync"},
 	{label: "Setup Guide", value: "guide"},
 }
 
@@ -251,7 +258,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.phase {
-	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect:
+	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect, phaseOptionsMenu:
 		return m.updateMenu(msg)
 	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue:
 		return m.updateInput(msg)
@@ -264,8 +271,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) goBack() (tea.Model, tea.Cmd) {
 	switch m.phase {
+	case phaseOptionsMenu:
+		m.phase = phaseMenu
+		m.cursor = 0
+		m.menuItems = mainMenu
+		m.err = nil
+		return m, nil
 	case phaseEditEntryList:
-		// Back to day list
 		m.phase = phaseEditDayList
 		m.cursor = 0
 		m.menuItems = m.datesToMenuItems()
@@ -345,6 +357,10 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		return m.handleEditFieldSelect(selected)
 	}
 
+	if m.phase == phaseOptionsMenu {
+		return m.handleOptionsSelect(selected)
+	}
+
 	if m.phase == phaseBackfillType {
 		m.backfillType = selected
 		m.phase = phaseBackfillDate
@@ -414,14 +430,10 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 			return actions.ReopenDay(m.db, actions.TodayInCopenhagen())
 		})
 
-	case "config":
-		return m.showResultWithCapture(func() error {
-			return actions.PrintAllConfig(m.db)
-		})
-
-	case "guide":
-		m.phase = phaseResult
-		m.result = guideQuickText
+	case "options":
+		m.phase = phaseOptionsMenu
+		m.cursor = 0
+		m.menuItems = optionsMenu
 		return m, nil
 	}
 
@@ -560,6 +572,38 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		})
 	}
 
+	return m, nil
+}
+
+func (m model) handleOptionsSelect(selected string) (tea.Model, tea.Cmd) {
+	switch selected {
+	case "config":
+		return m.showResultWithCapture(func() error {
+			return actions.PrintAllConfig(m.db)
+		})
+	case "sync":
+		return m.showResultWithCapture(func() error {
+			sheetID, calID := actions.GetGoogleConfig(m.db)
+			if sheetID == "" && calID == "" {
+				return fmt.Errorf("no spreadsheet or calendar configured")
+			}
+			entries, err := m.db.GetUnsyncedEntries()
+			if err != nil {
+				return err
+			}
+			if len(entries) == 0 {
+				fmt.Println("Everything is up to date.")
+				return nil
+			}
+			fmt.Printf("Syncing %d entries...\n", len(entries))
+			w := syncpkg.NewWorker(m.db, 0)
+			return w.SyncNow()
+		})
+	case "guide":
+		m.phase = phaseResult
+		m.result = guideQuickText
+		return m, nil
+	}
 	return m, nil
 }
 
@@ -710,6 +754,18 @@ func (m model) View() string {
 
 	case phaseBackfillType:
 		b.WriteString("What type of entry?\n\n")
+		for i, item := range m.menuItems {
+			if i == m.cursor {
+				b.WriteString(selectedStyle.Render(fmt.Sprintf("  > %s", item.label)))
+			} else {
+				b.WriteString(fmt.Sprintf("    %s", item.label))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
+
+	case phaseOptionsMenu:
+		b.WriteString("Options:\n\n")
 		for i, item := range m.menuItems {
 			if i == m.cursor {
 				b.WriteString(selectedStyle.Render(fmt.Sprintf("  > %s", item.label)))
