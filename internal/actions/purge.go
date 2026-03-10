@@ -3,7 +3,6 @@ package actions
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/rlf/time_register_cli/internal/db"
@@ -53,12 +52,12 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 	if calID != "" {
 		cal, err := googleapi.NewCalendarClient(ctx, calID)
 		if err != nil {
-			log.Printf("calendar client error: %v", err)
+			fmt.Printf("Warning: calendar client error: %v\n", err)
 		} else {
 			for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
 				dateStr := day.Format("2006-01-02")
 				if err := cal.DeleteEventsForDate(dateStr); err != nil {
-					log.Printf("delete calendar events for %s: %v", dateStr, err)
+					fmt.Printf("Warning: could not delete calendar events for %s: %v\n", dateStr, err)
 				}
 			}
 			fmt.Println("Cleared calendar events")
@@ -75,10 +74,10 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 	if sheetID != "" {
 		sc, err := googleapi.NewSheetsClient(ctx, sheetID)
 		if err != nil {
-			log.Printf("sheets client error: %v", err)
+			fmt.Printf("Warning: sheets client error: %v\n", err)
 		} else {
 			if err := sc.ResetMonthTabs(fromDate, toDate); err != nil {
-				log.Printf("reset sheet tabs: %v", err)
+				fmt.Printf("Warning: could not reset sheet tabs: %v\n", err)
 			} else {
 				fmt.Println("Reset spreadsheet tabs")
 			}
@@ -91,7 +90,9 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 					continue
 				}
 				done[ym] = true
-				_ = d.ResetSyncFlagsForMonth(ym)
+				if err := d.ResetSyncFlagsForMonth(ym); err != nil {
+					fmt.Printf("Warning: could not reset sync flags for %s: %v\n", ym, err)
+				}
 			}
 		}
 	}

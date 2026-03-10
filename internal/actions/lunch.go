@@ -72,14 +72,20 @@ func splitForLunch(d *db.DB, date string, covering *models.Entry, lunchStart str
 	originalType := covering.EntryType
 
 	// 1. Shrink covering entry to end at lunch start
-	dur, _ := CalcDurationMinutes(covering.StartTime, lunchStart)
+	dur, err := CalcDurationMinutes(covering.StartTime, lunchStart)
+	if err != nil {
+		return fmt.Errorf("calc duration for %s-%s: %w", covering.StartTime, lunchStart, err)
+	}
 	if err := d.UpdateEntryEndTime(covering.ID, lunchStart, dur); err != nil {
 		return fmt.Errorf("shrink entry: %w", err)
 	}
 	fmt.Printf("%s %s-%s\n", originalName, covering.StartTime, lunchStart)
 
 	// 2. Insert lunch entry (closed, 30 min)
-	lunchDur, _ := CalcDurationMinutes(lunchStart, lunchEnd)
+	lunchDur, err := CalcDurationMinutes(lunchStart, lunchEnd)
+	if err != nil {
+		return fmt.Errorf("calc lunch duration for %s-%s: %w", lunchStart, lunchEnd, err)
+	}
 	lunchEntry := &models.Entry{
 		Date:            date,
 		EntryType:       models.EntryLunch,
@@ -95,7 +101,10 @@ func splitForLunch(d *db.DB, date string, covering *models.Entry, lunchStart str
 
 	// 3. Insert continuation entry (same name/type, from lunch end to original end)
 	if lunchEnd < originalEnd {
-		contDur, _ := CalcDurationMinutes(lunchEnd, originalEnd)
+		contDur, err := CalcDurationMinutes(lunchEnd, originalEnd)
+		if err != nil {
+			return fmt.Errorf("calc continuation duration for %s-%s: %w", lunchEnd, originalEnd, err)
+		}
 		contEntry := &models.Entry{
 			Date:            date,
 			EntryType:       originalType,

@@ -3,7 +3,6 @@ package actions
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
@@ -15,7 +14,11 @@ func UpdateEntryAndResolveOverlaps(d *db.DB, entry models.Entry) error {
 	// Calculate duration
 	dur := 0
 	if entry.StartTime != "" && entry.EndTime != "" {
-		dur, _ = CalcDurationMinutes(entry.StartTime, entry.EndTime)
+		var err error
+		dur, err = CalcDurationMinutes(entry.StartTime, entry.EndTime)
+		if err != nil {
+			return fmt.Errorf("calc duration for %s-%s: %w", entry.StartTime, entry.EndTime, err)
+		}
 	}
 
 	if err := d.UpdateEntry(entry.ID, entry.Name, entry.StartTime, entry.EndTime, dur); err != nil {
@@ -32,6 +35,7 @@ func UpdateEntryAndResolveOverlaps(d *db.DB, entry models.Entry) error {
 		return fmt.Errorf("reset sync flags: %w", err)
 	}
 
+	fmt.Printf("Updated entry: %s (%s-%s)\n", entry.Name, entry.StartTime, entry.EndTime)
 	TriggerSync(d)
 	return nil
 }
@@ -58,10 +62,10 @@ func ResyncDay(d *db.DB, date string) error {
 	if calID != "" {
 		cal, err := googleapi.NewCalendarClient(ctx, calID)
 		if err != nil {
-			log.Printf("calendar client error: %v", err)
+			fmt.Printf("Warning: calendar client error: %v\n", err)
 		} else {
 			if err := cal.DeleteEventsForDate(date); err != nil {
-				log.Printf("delete calendar events: %v", err)
+				fmt.Printf("Warning: could not delete calendar events for %s: %v\n", date, err)
 			} else {
 				fmt.Printf("Cleared calendar events for %s\n", date)
 			}
@@ -131,8 +135,11 @@ func resolveOverlaps(d *db.DB, date string, editedID int64) error {
 			}
 
 			if newStart != other.StartTime || newEnd != other.EndTime {
-				dur, _ := CalcDurationMinutes(newStart, newEnd)
-				if err := d.UpdateEntry(other.ID, other.Name, newStart, newEnd, dur); err != nil {
+				dur, err := CalcDurationMinutes(newStart, newEnd)
+			if err != nil {
+				return fmt.Errorf("calc duration for adjusted entry %d (%s-%s): %w", other.ID, newStart, newEnd, err)
+			}
+			if err := d.UpdateEntry(other.ID, other.Name, newStart, newEnd, dur); err != nil {
 					return fmt.Errorf("adjust entry %d: %w", other.ID, err)
 				}
 				fmt.Printf("Adjusted %s: %s-%s → %s-%s\n", other.Name, other.StartTime, other.EndTime, newStart, newEnd)

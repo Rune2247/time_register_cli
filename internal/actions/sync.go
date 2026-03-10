@@ -12,7 +12,11 @@ import (
 // Prints status so the user knows what happened.
 func TriggerSync(d *db.DB) {
 	entries, err := d.GetUnsyncedEntries()
-	if err != nil || len(entries) == 0 {
+	if err != nil {
+		fmt.Printf("Sync: could not get unsynced entries: %v\n", err)
+		return
+	}
+	if len(entries) == 0 {
 		return
 	}
 
@@ -48,7 +52,9 @@ func TriggerSync(d *db.DB) {
 				fmt.Printf("Sync: sheets failed for %s %s: %v\n", entry.Date, entry.DisplayName(), err)
 				failed++
 			} else {
-				_ = d.MarkPostedToSheets(entry.ID)
+				if err := d.MarkPostedToSheets(entry.ID); err != nil {
+					fmt.Printf("Sync: could not mark entry %d as posted to sheets: %v\n", entry.ID, err)
+				}
 				synced++
 			}
 		}
@@ -57,7 +63,9 @@ func TriggerSync(d *db.DB) {
 				fmt.Printf("Sync: calendar failed for %s %s: %v\n", entry.Date, entry.DisplayName(), err)
 				failed++
 			} else {
-				_ = d.MarkPostedToCalendar(entry.ID)
+				if err := d.MarkPostedToCalendar(entry.ID); err != nil {
+					fmt.Printf("Sync: could not mark entry %d as posted to calendar: %v\n", entry.ID, err)
+				}
 				synced++
 			}
 		}
