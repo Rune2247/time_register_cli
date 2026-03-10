@@ -14,24 +14,13 @@ func GetDayStatus(d *db.DB, date string) (*models.DayStatus, error) {
 		return nil, err
 	}
 
-	status := &models.DayStatus{
-		Date:    date,
-		Entries: entries,
-	}
-
-	for _, e := range entries {
-		if e.DurationMinutes <= 0 {
-			continue
-		}
-		switch e.EntryType {
-		case models.EntryLunch:
-			status.LunchMinutes += e.DurationMinutes
-		case models.EntryAssignment:
-			status.WorkMinutes += e.DurationMinutes
-		}
-	}
-
-	return status, nil
+	work, lunch := models.AccumulateMinutes(entries)
+	return &models.DayStatus{
+		Date:         date,
+		Entries:      entries,
+		WorkMinutes:  work,
+		LunchMinutes: lunch,
+	}, nil
 }
 
 func GetWeekStatus(d *db.DB, date string) (*models.WeekStatus, error) {
@@ -40,7 +29,6 @@ func GetWeekStatus(d *db.DB, date string) (*models.WeekStatus, error) {
 		return nil, fmt.Errorf("parse date: %w", err)
 	}
 
-	// Find Monday of this week
 	weekday := t.Weekday()
 	if weekday == time.Sunday {
 		weekday = 7
@@ -56,24 +44,13 @@ func GetWeekStatus(d *db.DB, date string) (*models.WeekStatus, error) {
 		return nil, err
 	}
 
-	status := &models.WeekStatus{
-		StartDate: startDate,
-		EndDate:   endDate,
-	}
-
-	for _, e := range entries {
-		if e.DurationMinutes <= 0 {
-			continue
-		}
-		switch e.EntryType {
-		case models.EntryLunch:
-			status.LunchMinutes += e.DurationMinutes
-		case models.EntryAssignment:
-			status.WorkMinutes += e.DurationMinutes
-		}
-	}
-
-	return status, nil
+	work, lunch := models.AccumulateMinutes(entries)
+	return &models.WeekStatus{
+		StartDate:    startDate,
+		EndDate:      endDate,
+		WorkMinutes:  work,
+		LunchMinutes: lunch,
+	}, nil
 }
 
 func PrintStatus(d *db.DB, date string) error {
@@ -86,32 +63,12 @@ func PrintStatus(d *db.DB, date string) error {
 		return err
 	}
 
-	fmt.Printf("Today you have worked %.1f hours\n", float64(dayStatus.WorkMinutes)/60.0)
-	fmt.Printf("This week you have worked %.1f hours, and had %.1f lunch hours\n",
-		float64(weekStatus.WorkMinutes)/60.0, float64(weekStatus.LunchMinutes)/60.0)
+	fmt.Println(models.FormatStatusSummary(dayStatus, weekStatus))
 
-	// Print today's entries
 	if len(dayStatus.Entries) > 0 {
 		fmt.Println("\nToday's entries:")
-		for _, e := range dayStatus.Entries {
-			switch e.EntryType {
-			case models.EntryAssignment:
-				end := e.EndTime
-				if end == "" {
-					end = "ongoing"
-				}
-				fmt.Printf("  %s - %s  %s\n", e.StartTime, end, e.Name)
-			case models.EntryLunch:
-				end := e.EndTime
-				if end == "" {
-					end = "ongoing"
-				}
-				fmt.Printf("  %s - %s  Lunch\n", e.StartTime, end)
-			case models.EntryHoliday:
-				fmt.Printf("  Holiday\n")
-			case models.EntryEndDay:
-				fmt.Printf("  %s        Day ended\n", e.StartTime)
-			}
+		for i := range dayStatus.Entries {
+			fmt.Printf("  %s\n", dayStatus.Entries[i].FormatLine())
 		}
 	}
 

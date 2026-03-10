@@ -34,19 +34,12 @@ func (c *CalendarClient) CreateEvent(entry *models.Entry) error {
 		return fmt.Errorf("entry has no end time")
 	}
 
-	title := entry.Name
-	if entry.EntryType == models.EntryLunch {
-		title = "Lunch"
-	} else if entry.EntryType == models.EntryEndDay {
-		return nil // don't create events for end-day markers
-	} else if entry.EntryType == models.EntryHoliday {
-		title = "Holiday"
+	if entry.EntryType == models.EntryEndDay {
+		return nil
 	}
 
-	loc, err := time.LoadLocation("Europe/Copenhagen")
-	if err != nil {
-		return fmt.Errorf("load timezone: %w", err)
-	}
+	title := entry.DisplayName()
+	loc := models.CopenhagenTZ
 
 	startDT, err := time.ParseInLocation("2006-01-02 15:04", entry.Date+" "+entry.StartTime, loc)
 	if err != nil {
@@ -80,10 +73,7 @@ func (c *CalendarClient) CreateEvent(entry *models.Entry) error {
 
 // DeleteEventsForDate deletes all events on the given date from the calendar.
 func (c *CalendarClient) DeleteEventsForDate(date string) error {
-	loc, err := time.LoadLocation("Europe/Copenhagen")
-	if err != nil {
-		return fmt.Errorf("load timezone: %w", err)
-	}
+	loc := models.CopenhagenTZ
 
 	dayStart, err := time.ParseInLocation("2006-01-02", date, loc)
 	if err != nil {

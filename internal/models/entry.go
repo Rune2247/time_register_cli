@@ -1,5 +1,21 @@
 package models
 
+import (
+	"fmt"
+	"time"
+)
+
+// CopenhagenTZ is the shared timezone used for all time calculations.
+var CopenhagenTZ *time.Location
+
+func init() {
+	var err error
+	CopenhagenTZ, err = time.LoadLocation("Europe/Copenhagen")
+	if err != nil {
+		CopenhagenTZ = time.UTC
+	}
+}
+
 type EntryType string
 
 const (
@@ -11,28 +27,84 @@ const (
 
 type Entry struct {
 	ID               int64     `json:"id"`
-	Date             string    `json:"date"`               // YYYY-MM-DD
-	EntryType        EntryType `json:"entry_type"`          // assignment, lunch, end_day, holiday
-	Name             string    `json:"name"`                // assignment name (empty for lunch/end_day)
-	StartTime        string    `json:"start_time"`          // HH:MM 24h
-	EndTime          string    `json:"end_time"`            // HH:MM 24h, empty until closed
-	DurationMinutes  int       `json:"duration_minutes"`    // calculated when end_time is set
+	Date             string    `json:"date"`
+	EntryType        EntryType `json:"entry_type"`
+	Name             string    `json:"name"`
+	StartTime        string    `json:"start_time"`
+	EndTime          string    `json:"end_time"`
+	DurationMinutes  int       `json:"duration_minutes"`
 	PostedToSheets   bool      `json:"posted_to_sheets"`
 	PostedToCalendar bool      `json:"posted_to_calendar"`
 	CreatedAt        string    `json:"created_at"`
 	UpdatedAt        string    `json:"updated_at"`
 }
 
+// DisplayName returns the display label for an entry based on its type.
+func (e *Entry) DisplayName() string {
+	switch e.EntryType {
+	case EntryLunch:
+		return "Lunch"
+	case EntryEndDay:
+		return "End Day"
+	case EntryHoliday:
+		return "Holiday"
+	default:
+		return e.Name
+	}
+}
+
+// FormatLine returns a single-line display for an entry (e.g. "08:00-12:00  Work").
+func (e *Entry) FormatLine() string {
+	name := e.DisplayName()
+	switch e.EntryType {
+	case EntryHoliday:
+		return "           Holiday"
+	case EntryEndDay:
+		return fmt.Sprintf("%s       %s", e.StartTime, name)
+	default:
+		end := e.EndTime
+		if end == "" {
+			end = "..."
+		}
+		return fmt.Sprintf("%s-%s  %s", e.StartTime, end, name)
+	}
+}
+
+// AccumulateMinutes sums work and lunch minutes from a slice of entries.
+func AccumulateMinutes(entries []Entry) (workMinutes, lunchMinutes int) {
+	for _, e := range entries {
+		if e.DurationMinutes <= 0 {
+			continue
+		}
+		switch e.EntryType {
+		case EntryAssignment:
+			workMinutes += e.DurationMinutes
+		case EntryLunch:
+			lunchMinutes += e.DurationMinutes
+		}
+	}
+	return
+}
+
+// FormatStatusSummary returns a formatted string with day and week hours.
+func FormatStatusSummary(dayStatus *DayStatus, weekStatus *WeekStatus) string {
+	return fmt.Sprintf("Today: %.1fh worked\nThis week: %.1fh worked, %.1fh lunch",
+		float64(dayStatus.WorkMinutes)/60.0,
+		float64(weekStatus.WorkMinutes)/60.0,
+		float64(weekStatus.LunchMinutes)/60.0,
+	)
+}
+
 type DayStatus struct {
-	Date          string
-	Entries       []Entry
-	WorkMinutes   int
-	LunchMinutes  int
+	Date         string
+	Entries      []Entry
+	WorkMinutes  int
+	LunchMinutes int
 }
 
 type WeekStatus struct {
-	StartDate    string // Monday
-	EndDate      string // Sunday
+	StartDate    string
+	EndDate      string
 	Days         []DayStatus
 	WorkMinutes  int
 	LunchMinutes int

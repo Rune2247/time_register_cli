@@ -142,30 +142,24 @@ func (m model) buildStatusHeader() string {
 	today := actions.TodayInCopenhagen()
 	now := actions.NowInCopenhagen()
 
-	// Current assignment
 	entries, err := m.db.GetEntriesByDate(today)
 	if err == nil {
-		var current string
-		var currentStart string
-		for _, e := range entries {
-			if e.EndTime == "" && e.EntryType != "end_day" {
-				if e.EntryType == "lunch" {
-					current = "Lunch"
-				} else {
-					current = e.Name
-				}
-				currentStart = e.StartTime
+		var current *models.Entry
+		for i := range entries {
+			e := &entries[i]
+			if e.EndTime == "" && e.EntryType != models.EntryEndDay {
+				current = e
 			}
 		}
-		if current != "" {
-			elapsed, _ := actions.CalcDurationMinutes(currentStart, now)
+		if current != nil {
+			elapsed, _ := actions.CalcDurationMinutes(current.StartTime, now)
 			h := elapsed / 60
 			mins := elapsed % 60
-			b.WriteString(dimStyle.Render(fmt.Sprintf("  Current: %s (%dh%02dm)", current, h, mins)))
+			b.WriteString(dimStyle.Render(fmt.Sprintf("  Current: %s (%dh%02dm)", current.DisplayName(), h, mins)))
 		} else {
 			hasEndDay := false
 			for _, e := range entries {
-				if e.EntryType == "end_day" {
+				if e.EntryType == models.EntryEndDay {
 					hasEndDay = true
 				}
 			}
@@ -177,7 +171,6 @@ func (m model) buildStatusHeader() string {
 		}
 		b.WriteString("\n")
 
-		// Today's hours
 		dayStatus, err := actions.GetDayStatus(m.db, today)
 		if err == nil {
 			b.WriteString(dimStyle.Render(fmt.Sprintf("  Today:   %.1fh worked", float64(dayStatus.WorkMinutes)/60.0)))
@@ -185,10 +178,7 @@ func (m model) buildStatusHeader() string {
 		}
 	}
 
-	// Google connection
-	sheetID, _ := m.db.GetConfig("spreadsheet_id")
-	calID, _ := m.db.GetConfig("calendar_id")
-
+	sheetID, calID := actions.GetGoogleConfig(m.db)
 	googleStatus := "not configured"
 	if sheetID != "" && calID != "" {
 		if googleapi.IsAuthenticated() {
@@ -202,7 +192,6 @@ func (m model) buildStatusHeader() string {
 	b.WriteString(dimStyle.Render(fmt.Sprintf("  Google:  %s", googleStatus)))
 	b.WriteString("\n")
 
-	// Unsynced entries
 	unsynced, err := m.db.GetUnsyncedEntries()
 	if err == nil && len(unsynced) > 0 {
 		b.WriteString(dimStyle.Render(fmt.Sprintf("  Pending: %d entries to sync", len(unsynced))))
@@ -315,19 +304,11 @@ func (m model) datesToMenuItems() []menuItem {
 
 func (m model) entriesToMenuItems() []menuItem {
 	items := make([]menuItem, len(m.editEntries))
-	for i, e := range m.editEntries {
-		label := fmt.Sprintf("%s-%s  %s", e.StartTime, e.EndTime, e.Name)
-		if e.EndTime == "" {
-			label = fmt.Sprintf("%s-...   %s", e.StartTime, e.Name)
+	for i := range m.editEntries {
+		items[i] = menuItem{
+			label: m.editEntries[i].FormatLine(),
+			value: fmt.Sprintf("%d", m.editEntries[i].ID),
 		}
-		if e.EntryType == models.EntryEndDay {
-			label = fmt.Sprintf("%s       End Day", e.StartTime)
-		} else if e.EntryType == models.EntryLunch {
-			label = fmt.Sprintf("%s-%s  Lunch", e.StartTime, e.EndTime)
-		} else if e.EntryType == models.EntryHoliday {
-			label = fmt.Sprintf("           Holiday")
-		}
-		items[i] = menuItem{label: label, value: fmt.Sprintf("%d", e.ID)}
 	}
 	return items
 }
@@ -478,7 +459,7 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 	case phaseHolidayDate:
 		date := actions.TodayInCopenhagen()
 		if value != "" {
-			parsed, err := parseSlashDate(value)
+			parsed, err := actions.ParseSlashDate(value)
 			if err != nil {
 				m.err = err
 				return m, nil
@@ -494,7 +475,7 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("date cannot be empty")
 			return m, nil
 		}
-		parsed, err := parseSlashDate(value)
+		parsed, err := actions.ParseSlashDate(value)
 		if err != nil {
 			m.err = err
 			return m, nil
@@ -512,15 +493,10 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("time cannot be empty")
 			return m, nil
 		}
-		// Accept both HH:MM and HHMM
-		timeStr := value
-		if !strings.Contains(timeStr, ":") {
-			parsed, err := parseBacklogTime(timeStr)
-			if err != nil {
-				m.err = err
-				return m, nil
-			}
-			timeStr = parsed
+		timeStr, err := actions.ParseTimeInput(value)
+		if err != nil {
+			m.err = err
+			return m, nil
 		}
 		m.backfillTime = timeStr
 
@@ -561,25 +537,19 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		case "name":
 			entry.Name = value
 		case "start":
-			if !strings.Contains(value, ":") {
-				parsed, err := parseBacklogTime(value)
-				if err != nil {
-					m.err = err
-					return m, nil
-				}
-				value = parsed
+			parsed, err := actions.ParseTimeInput(value)
+			if err != nil {
+				m.err = err
+				return m, nil
 			}
-			entry.StartTime = value
+			entry.StartTime = parsed
 		case "end":
-			if !strings.Contains(value, ":") {
-				parsed, err := parseBacklogTime(value)
-				if err != nil {
-					m.err = err
-					return m, nil
-				}
-				value = parsed
+			parsed, err := actions.ParseTimeInput(value)
+			if err != nil {
+				m.err = err
+				return m, nil
 			}
-			entry.EndTime = value
+			entry.EndTime = parsed
 		}
 		return m.showResultWithCapture(func() error {
 			err := actions.UpdateEntryAndResolveOverlaps(m.db, entry)
@@ -779,13 +749,7 @@ func (m model) View() string {
 		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
 
 	case phaseEditFieldSelect:
-		label := m.editEntry.Name
-		if m.editEntry.EntryType == models.EntryLunch {
-			label = "Lunch"
-		} else if m.editEntry.EntryType == models.EntryEndDay {
-			label = "End Day"
-		}
-		b.WriteString(fmt.Sprintf("Edit %s (%s-%s):\n\n", label, m.editEntry.StartTime, m.editEntry.EndTime))
+		b.WriteString(fmt.Sprintf("Edit %s (%s-%s):\n\n", m.editEntry.DisplayName(), m.editEntry.StartTime, m.editEntry.EndTime))
 		for i, item := range m.menuItems {
 			if i == m.cursor {
 				b.WriteString(selectedStyle.Render(fmt.Sprintf("  > %s", item.label)))

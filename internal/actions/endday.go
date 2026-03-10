@@ -12,7 +12,6 @@ func EndDay(d *db.DB, date, endTime string) error {
 		return err
 	}
 
-	// Print day and week status
 	dayStatus, err := GetDayStatus(d, date)
 	if err != nil {
 		return err
@@ -23,9 +22,7 @@ func EndDay(d *db.DB, date, endTime string) error {
 	}
 
 	fmt.Printf("Day ended at %s\n", endTime)
-	fmt.Printf("Today you have worked %.1f hours\n", float64(dayStatus.WorkMinutes)/60.0)
-	fmt.Printf("This week you have worked %.1f hours, and had %.1f lunch hours\n",
-		float64(weekStatus.WorkMinutes)/60.0, float64(weekStatus.LunchMinutes)/60.0)
+	fmt.Println(models.FormatStatusSummary(dayStatus, weekStatus))
 
 	return nil
 }

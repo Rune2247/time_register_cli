@@ -136,12 +136,7 @@ func (t *Tray) handleEnd() {
 	dayStatus, _ := actions.GetDayStatus(t.db, today)
 	weekStatus, _ := actions.GetWeekStatus(t.db, today)
 
-	msg := fmt.Sprintf("Day ended at %s\nToday: %.1fh worked\nThis week: %.1fh worked, %.1fh lunch",
-		now,
-		float64(dayStatus.WorkMinutes)/60.0,
-		float64(weekStatus.WorkMinutes)/60.0,
-		float64(weekStatus.LunchMinutes)/60.0,
-	)
+	msg := fmt.Sprintf("Day ended at %s\n%s", now, models.FormatStatusSummary(dayStatus, weekStatus))
 	zenityNotify("TimeReg", msg)
 	t.updateStatus()
 	go t.worker.SyncNow()
@@ -189,7 +184,6 @@ func (t *Tray) updateStatus() {
 		return
 	}
 
-	// Find the current open entry
 	var current *models.Entry
 	for i := range entries {
 		if entries[i].EndTime == "" && entries[i].EntryType != models.EntryEndDay {
@@ -198,7 +192,6 @@ func (t *Tray) updateStatus() {
 	}
 
 	if current == nil {
-		// Check if day has ended
 		for _, e := range entries {
 			if e.EntryType == models.EntryEndDay {
 				t.mStatus.SetTitle("Day ended")
@@ -216,10 +209,7 @@ func (t *Tray) updateStatus() {
 	hours := elapsed / 60
 	mins := elapsed % 60
 
-	label := current.Name
-	if current.EntryType == models.EntryLunch {
-		label = "Lunch"
-	}
+	label := current.DisplayName()
 
 	statusText := fmt.Sprintf("%s (%dh%02dm)", label, hours, mins)
 	t.mStatus.SetTitle(statusText)

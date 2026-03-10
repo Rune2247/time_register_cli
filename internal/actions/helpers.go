@@ -2,9 +2,11 @@ package actions
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/rlf/time_register_cli/internal/db"
+	"github.com/rlf/time_register_cli/internal/models"
 )
 
 // closeOpenEntry closes the last open entry on the given date by setting its
@@ -28,7 +30,6 @@ func closeOpenEntry(d *db.DB, date, endTime string) error {
 
 // CalcDurationMinutes returns the difference in minutes between two HH:MM times.
 // Handles midnight crossing (e.g. 23:00 to 01:00 = 120 minutes).
-// Returns 0 if the calculated duration is negative and not a midnight crossing.
 func CalcDurationMinutes(startTime, endTime string) (int, error) {
 	start, err := time.Parse("15:04", startTime)
 	if err != nil {
@@ -40,7 +41,6 @@ func CalcDurationMinutes(startTime, endTime string) (int, error) {
 	}
 	diff := int(end.Sub(start).Minutes())
 	if diff < 0 {
-		// Midnight crossing: add 24 hours
 		diff += 24 * 60
 	}
 	return diff, nil
@@ -58,12 +58,63 @@ func AddMinutes(timeStr string, minutes int) (string, error) {
 
 // NowInCopenhagen returns the current time in Europe/Copenhagen as HH:MM.
 func NowInCopenhagen() string {
-	loc, _ := time.LoadLocation("Europe/Copenhagen")
-	return time.Now().In(loc).Format("15:04")
+	return time.Now().In(models.CopenhagenTZ).Format("15:04")
 }
 
 // TodayInCopenhagen returns today's date in Europe/Copenhagen as YYYY-MM-DD.
 func TodayInCopenhagen() string {
-	loc, _ := time.LoadLocation("Europe/Copenhagen")
-	return time.Now().In(loc).Format("2006-01-02")
+	return time.Now().In(models.CopenhagenTZ).Format("2006-01-02")
+}
+
+// DateInCurrentYear converts day + month to YYYY-MM-DD using the current year in Copenhagen.
+func DateInCurrentYear(day, month int) string {
+	year := time.Now().In(models.CopenhagenTZ).Year()
+	return fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+}
+
+// ParseSlashDate converts "d/m" string to YYYY-MM-DD using current year.
+func ParseSlashDate(s string) (string, error) {
+	var day, month int
+	_, err := fmt.Sscanf(s, "%d/%d", &day, &month)
+	if err != nil {
+		return "", fmt.Errorf("invalid date %q: expected d/m format", s)
+	}
+	return DateInCurrentYear(day, month), nil
+}
+
+// ParseBacklogDate converts separate day and month strings to YYYY-MM-DD.
+func ParseBacklogDate(dayStr, monthStr string) (string, error) {
+	day, err := strconv.Atoi(dayStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid day %q: %w", dayStr, err)
+	}
+	month, err := strconv.Atoi(monthStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid month %q: %w", monthStr, err)
+	}
+	return DateInCurrentYear(day, month), nil
+}
+
+// ParseTimeInput converts HHMM (e.g. "830", "1600") to HH:MM.
+// If the input already contains ":", it is returned as-is.
+func ParseTimeInput(s string) (string, error) {
+	for i := range s {
+		if s[i] == ':' {
+			return s, nil
+		}
+	}
+	for len(s) < 4 {
+		s = "0" + s
+	}
+	if len(s) != 4 {
+		return "", fmt.Errorf("invalid time %q: expected HHMM format", s)
+	}
+	return s[:2] + ":" + s[2:], nil
+}
+
+// GetGoogleConfig returns the spreadsheet and calendar IDs from config.
+func GetGoogleConfig(d *db.DB) (spreadsheetID, calendarID string) {
+	spreadsheetID, _ = d.GetConfig("spreadsheet_id")
+	calendarID, _ = d.GetConfig("calendar_id")
+	return
 }

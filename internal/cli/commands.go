@@ -2,8 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
-	"time"
 
 	"github.com/rlf/time_register_cli/internal/actions"
 	"github.com/rlf/time_register_cli/internal/db"
@@ -92,7 +90,7 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			date := actions.TodayInCopenhagen()
 			if len(args) == 1 {
-				parsed, err := parseSlashDate(args[0])
+				parsed, err := actions.ParseSlashDate(args[0])
 				if err != nil {
 					return err
 				}
@@ -153,11 +151,11 @@ Examples:
   timereg backlog 3 4 1200 lunch             → lunch on April 3rd at 12:00`,
 		Args: cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			date, err := parseBacklogDate(args[0], args[1])
+			date, err := actions.ParseBacklogDate(args[0], args[1])
 			if err != nil {
 				return err
 			}
-			timeStr, err := parseBacklogTime(args[2])
+			timeStr, err := actions.ParseTimeInput(args[2])
 			if err != nil {
 				return err
 			}
@@ -197,7 +195,7 @@ func newHolidayCmd(d *db.DB) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			date := actions.TodayInCopenhagen()
 			if len(args) == 1 {
-				parsed, err := parseSlashDate(args[0])
+				parsed, err := actions.ParseSlashDate(args[0])
 				if err != nil {
 					return err
 				}
@@ -300,58 +298,16 @@ Example:
 	return cmd
 }
 
-// parseBacklogDate converts day + month args to YYYY-MM-DD using current year.
-func parseBacklogDate(dayStr, monthStr string) (string, error) {
-	day, err := strconv.Atoi(dayStr)
-	if err != nil {
-		return "", fmt.Errorf("invalid day %q: %w", dayStr, err)
-	}
-	month, err := strconv.Atoi(monthStr)
-	if err != nil {
-		return "", fmt.Errorf("invalid month %q: %w", monthStr, err)
-	}
-	loc, _ := time.LoadLocation("Europe/Copenhagen")
-	year := time.Now().In(loc).Year()
-	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), nil
-}
-
-// parseBacklogTime converts HHMM (e.g. 830, 1600) to HH:MM.
-func parseBacklogTime(timeStr string) (string, error) {
-	// Pad to 4 digits: "830" -> "0830"
-	for len(timeStr) < 4 {
-		timeStr = "0" + timeStr
-	}
-	if len(timeStr) != 4 {
-		return "", fmt.Errorf("invalid time %q: expected HHMM format", timeStr)
-	}
-	return timeStr[:2] + ":" + timeStr[2:], nil
-}
-
-// parseSlashDate converts d/m to YYYY-MM-DD using current year.
-func parseSlashDate(s string) (string, error) {
-	var day, month int
-	_, err := fmt.Sscanf(s, "%d/%d", &day, &month)
-	if err != nil {
-		return "", fmt.Errorf("invalid date %q: expected d/m format", s)
-	}
-	loc, _ := time.LoadLocation("Europe/Copenhagen")
-	year := time.Now().In(loc).Year()
-	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), nil
-}
-
 func newSyncCmd(d *db.DB) *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",
 		Short: "Sync unposted entries to Google Sheets and Calendar",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Check config first
-			sheetID, _ := d.GetConfig("spreadsheet_id")
-			calID, _ := d.GetConfig("calendar_id")
+			sheetID, calID := actions.GetGoogleConfig(d)
 			if sheetID == "" && calID == "" {
 				return fmt.Errorf("no spreadsheet or calendar configured. Run 'timereg guide status' to check setup")
 			}
 
-			// Show what will be synced
 			entries, err := d.GetUnsyncedEntries()
 			if err != nil {
 				return fmt.Errorf("check unsynced entries: %w", err)
@@ -367,7 +323,6 @@ func newSyncCmd(d *db.DB) *cobra.Command {
 				return err
 			}
 
-			// Check how many are still unsynced
 			remaining, _ := d.GetUnsyncedEntries()
 			synced := len(entries) - len(remaining)
 			if len(remaining) > 0 {

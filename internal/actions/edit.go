@@ -53,7 +53,7 @@ func DeleteEntryAndResync(d *db.DB, entry models.Entry) error {
 func ResyncDay(d *db.DB, date string) error {
 	ctx := context.Background()
 
-	calID, _ := d.GetConfig("calendar_id")
+	_, calID := GetGoogleConfig(d)
 	if calID != "" {
 		cal, err := googleapi.NewCalendarClient(ctx, calID)
 		if err != nil {

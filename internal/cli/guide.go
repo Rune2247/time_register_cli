@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/rlf/time_register_cli/internal/actions"
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
 	"github.com/spf13/cobra"
@@ -175,16 +176,14 @@ func printSetupStatus(d *db.DB) error {
 	}
 	printStatus("Google auth", authStatus, "")
 
-	// Check spreadsheet
-	sheetID, _ := d.GetConfig("spreadsheet_id")
+	// Check spreadsheet and calendar
+	sheetID, calID := actions.GetGoogleConfig(d)
 	sheetStatus := "not set"
 	if sheetID != "" {
 		sheetStatus = sheetID
 	}
 	printStatus("Spreadsheet ID", sheetStatus, "")
 
-	// Check calendar
-	calID, _ := d.GetConfig("calendar_id")
 	calStatus := "not set"
 	if calID != "" {
 		calStatus = calID

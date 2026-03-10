@@ -184,12 +184,7 @@ func (c *SheetsClient) WriteEntry(entry *models.Entry) error {
 	dateStr := entry.Date
 	hours := float64(entry.DurationMinutes) / 60.0
 
-	name := entry.Name
-	if entry.EntryType == models.EntryEndDay {
-		name = "End Day"
-	} else if entry.EntryType == models.EntryHoliday {
-		name = "Holiday"
-	}
+	name := entry.DisplayName()
 
 	// Find the row for this date that's empty (no assignment yet)
 	// or find the first row after the last entry for this date

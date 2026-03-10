@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/rlf/time_register_cli/internal/actions"
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
 	"github.com/rlf/time_register_cli/internal/models"
@@ -73,9 +74,7 @@ func (w *Worker) syncOnce() error {
 
 	ctx := context.Background()
 
-	// Get config
-	spreadsheetID, _ := w.db.GetConfig("spreadsheet_id")
-	calendarID, _ := w.db.GetConfig("calendar_id")
+	spreadsheetID, calendarID := actions.GetGoogleConfig(w.db)
 
 	var sheetsClient *googleapi.SheetsClient
 	var calendarClient *googleapi.CalendarClient
