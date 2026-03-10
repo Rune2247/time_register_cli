@@ -214,7 +214,7 @@ func newConfigCmd(d *db.DB) *cobra.Command {
 		Short: "Set a config value",
 		Long: `Set a config value. For spreadsheet_id you can paste the full URL.
 
-Keys: spreadsheet_id, calendar_id, default_lunch_time, default_end_time, timezone`,
+Keys: spreadsheet_id, calendar_id, timezone`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return actions.SetConfigValue(d, args[0], args[1])

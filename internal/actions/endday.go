@@ -30,11 +30,6 @@ func EndDay(d *db.DB, date, endTime string) error {
 	return nil
 }
 
-// EndDaySilent ends the day without printing to stdout (for background worker).
-func EndDaySilent(d *db.DB, date, endTime string) error {
-	return endDay(d, date, endTime)
-}
-
 func endDay(d *db.DB, date, endTime string) error {
 	if err := closeOpenEntry(d, date, endTime); err != nil {
 		return err

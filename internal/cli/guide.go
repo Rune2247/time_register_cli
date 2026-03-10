@@ -191,19 +191,6 @@ func printSetupStatus(d *db.DB) error {
 	}
 	printStatus("Calendar ID", calStatus, "")
 
-	// Check defaults
-	lunch, _ := d.GetConfig("default_lunch_time")
-	if lunch == "" {
-		lunch = "12:00 (default)"
-	}
-	printStatus("Lunch time", lunch, "")
-
-	endTime, _ := d.GetConfig("default_end_time")
-	if endTime == "" {
-		endTime = "16:00 (default)"
-	}
-	printStatus("End-of-day time", endTime, "")
-
 	fmt.Println()
 	if credStatus == "not found" {
 		fmt.Println("Next step: Run 'timereg guide' for full setup instructions.")

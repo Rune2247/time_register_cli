@@ -30,18 +30,6 @@ var setupSteps = []setupStep{
 		defaultVal:  "",
 	},
 	{
-		key:         ConfigDefaultLunch,
-		prompt:      "Default lunch time",
-		description: "When lunch starts if not triggered manually.",
-		defaultVal:  "12:00",
-	},
-	{
-		key:         ConfigDefaultEnd,
-		prompt:      "Default end-of-day time",
-		description: "When the day ends if not triggered manually.",
-		defaultVal:  "16:00",
-	},
-	{
 		key:         ConfigTimezone,
 		prompt:      "Timezone",
 		description: "IANA timezone for all time calculations.",

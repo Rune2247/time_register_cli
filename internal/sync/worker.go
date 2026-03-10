@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/rlf/time_register_cli/internal/actions"
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
 	"github.com/rlf/time_register_cli/internal/models"
@@ -43,7 +42,6 @@ func (w *Worker) SyncNow() error {
 
 func (w *Worker) run() {
 	// Run once immediately
-	w.autoEndDay()
 	if err := w.syncOnce(); err != nil {
 		log.Printf("sync error: %v", err)
 	}
@@ -54,56 +52,11 @@ func (w *Worker) run() {
 	for {
 		select {
 		case <-ticker.C:
-			w.autoEndDay()
 			if err := w.syncOnce(); err != nil {
 				log.Printf("sync error: %v", err)
 			}
 		case <-w.stop:
 			return
-		}
-	}
-}
-
-// autoEndDay checks if there are open entries from previous days (or today past
-// the default end time) and automatically closes them.
-func (w *Worker) autoEndDay() {
-	defaultEnd, _ := w.db.GetConfig("default_end_time")
-	if defaultEnd == "" {
-		defaultEnd = "16:00"
-	}
-
-	today := actions.TodayInCopenhagen()
-	now := actions.NowInCopenhagen()
-
-	// Check today: if past default end time and there's an open entry, close it
-	if now > defaultEnd {
-		open, err := w.db.GetLastOpenEntry(today)
-		if err != nil {
-			log.Printf("auto end-day check error: %v", err)
-			return
-		}
-		if open != nil {
-			log.Printf("Auto-ending day at default time %s", defaultEnd)
-			if err := actions.EndDaySilent(w.db, today, defaultEnd); err != nil {
-				log.Printf("auto end-day error: %v", err)
-			}
-		}
-	}
-
-	// Check previous days (up to 7 days back) for unclosed entries
-	// Past days with no end-of-day get closed at 23:59 (end of that day)
-	loc, _ := time.LoadLocation("Europe/Copenhagen")
-	for i := 1; i <= 7; i++ {
-		pastDate := time.Now().In(loc).AddDate(0, 0, -i).Format("2006-01-02")
-		open, err := w.db.GetLastOpenEntry(pastDate)
-		if err != nil {
-			continue
-		}
-		if open != nil {
-			log.Printf("Auto-ending unclosed day %s at 23:59", pastDate)
-			if err := actions.EndDaySilent(w.db, pastDate, "23:59"); err != nil {
-				log.Printf("auto end-day error for %s: %v", pastDate, err)
-			}
 		}
 	}
 }

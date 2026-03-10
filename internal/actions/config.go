@@ -10,18 +10,14 @@ import (
 
 // Known config keys
 const (
-	ConfigSpreadsheetID  = "spreadsheet_id"
-	ConfigCalendarID     = "calendar_id"
-	ConfigDefaultLunch   = "default_lunch_time"
-	ConfigDefaultEnd     = "default_end_time"
-	ConfigTimezone        = "timezone"
+	ConfigSpreadsheetID = "spreadsheet_id"
+	ConfigCalendarID    = "calendar_id"
+	ConfigTimezone      = "timezone"
 )
 
 var configDescriptions = map[string]string{
 	ConfigSpreadsheetID: "Google Spreadsheet ID",
 	ConfigCalendarID:    "Google Calendar ID",
-	ConfigDefaultLunch:  "Default lunch time (HH:MM)",
-	ConfigDefaultEnd:    "Default end-of-day time (HH:MM)",
 	ConfigTimezone:      "Timezone",
 }
 
@@ -74,7 +70,7 @@ func PrintAllConfig(d *db.DB) error {
 
 	fmt.Println("Configuration:")
 	// Print known keys first in order
-	knownKeys := []string{ConfigSpreadsheetID, ConfigCalendarID, ConfigDefaultLunch, ConfigDefaultEnd, ConfigTimezone}
+	knownKeys := []string{ConfigSpreadsheetID, ConfigCalendarID, ConfigTimezone}
 	printed := make(map[string]bool)
 	for _, k := range knownKeys {
 		if v, ok := config[k]; ok {
