@@ -509,7 +509,7 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		m.phase = phaseBackfillTime
 		m.inputPrompt = "Time (HH:MM, e.g. 8:30 or 16:00)"
 		m.textInput.SetValue("")
-		m.textInput.Placeholder = "8:30"
+		m.textInput.Placeholder = "8:00"
 		m.err = nil
 		return m, nil
 
