@@ -59,10 +59,25 @@ func newStartCmd(d *db.DB) *cobra.Command {
 
 func newLunchCmd(d *db.DB) *cobra.Command {
 	return &cobra.Command{
-		Use:   "lunch",
-		Short: "Start lunch break",
+		Use:   "lunch <from> <to>",
+		Short: "Register lunch with from/to times",
+		Long: `Register lunch with explicit start and end times.
+Splits any overlapping work entries automatically.
+
+Examples:
+  timereg lunch 12:00 12:30
+  timereg lunch 1200 1230`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return actions.StartLunch(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
+			from, err := actions.ParseTimeInput(args[0])
+			if err != nil {
+				return err
+			}
+			to, err := actions.ParseTimeInput(args[1])
+			if err != nil {
+				return err
+			}
+			return actions.InsertLunch(d, actions.TodayInCopenhagen(), from, to)
 		},
 	}
 }
@@ -130,21 +145,38 @@ func newBackfillCmd(d *db.DB) *cobra.Command {
 
 func newBacklogCmd(d *db.DB) *cobra.Command {
 	return &cobra.Command{
-		Use:   "backlog <day> <month> <time> <name|end|lunch|break>",
+		Use:   "backlog <day> <month> <time> <name|end|break> | backlog <day> <month> lunch <from> <to>",
 		Short: "Quick add past entry",
 		Long: `Quick add a past entry without prompts.
 
 Examples:
   timereg backlog 3 4 830 "Client meeting"   → assignment on April 3rd at 08:30
   timereg backlog 3 4 1600 end               → end day on April 3rd at 16:00
-  timereg backlog 3 4 1200 lunch             → lunch on April 3rd at 12:00
-  timereg backlog 3 4 1400 break             → break on April 3rd at 14:00`,
-		Args: cobra.ExactArgs(4),
+  timereg backlog 3 4 1400 break             → break on April 3rd at 14:00
+  timereg backlog 3 4 lunch 1200 1230        → lunch on April 3rd 12:00-12:30`,
+		Args: cobra.RangeArgs(4, 5),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			date, err := actions.ParseBacklogDate(args[0], args[1])
 			if err != nil {
 				return err
 			}
+
+			// Handle lunch: backlog <day> <month> lunch <from> <to>
+			if args[2] == "lunch" {
+				if len(args) != 5 {
+					return fmt.Errorf("lunch requires from and to times: backlog <day> <month> lunch <from> <to>")
+				}
+				from, err := actions.ParseTimeInput(args[3])
+				if err != nil {
+					return err
+				}
+				to, err := actions.ParseTimeInput(args[4])
+				if err != nil {
+					return err
+				}
+				return actions.InsertLunch(d, date, from, to)
+			}
+
 			timeStr, err := actions.ParseTimeInput(args[2])
 			if err != nil {
 				return err
@@ -153,8 +185,6 @@ Examples:
 			switch args[3] {
 			case "end":
 				return actions.EndDay(d, date, timeStr)
-			case "lunch":
-				return actions.StartLunch(d, date, timeStr)
 			case "break":
 				return actions.StartBreak(d, date, timeStr)
 			default:

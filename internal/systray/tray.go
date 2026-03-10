@@ -114,13 +114,33 @@ func (t *Tray) handleStart() {
 
 func (t *Tray) handleLunch() {
 	today := actions.TodayInCopenhagen()
-	now := actions.NowInCopenhagen()
-	if err := actions.StartLunch(t.db, today, now); err != nil {
+
+	from, err := zenityInput("TimeReg", "Lunch from (HH:MM):")
+	if err != nil || from == "" {
+		return
+	}
+	fromParsed, err := actions.ParseTimeInput(from)
+	if err != nil {
 		zenityNotify("TimeReg Error", err.Error())
 		return
 	}
 
-	zenityNotify("TimeReg", fmt.Sprintf("Lunch started at %s", now))
+	to, err := zenityInput("TimeReg", "Lunch to (HH:MM):")
+	if err != nil || to == "" {
+		return
+	}
+	toParsed, err := actions.ParseTimeInput(to)
+	if err != nil {
+		zenityNotify("TimeReg Error", err.Error())
+		return
+	}
+
+	if err := actions.InsertLunch(t.db, today, fromParsed, toParsed); err != nil {
+		zenityNotify("TimeReg Error", err.Error())
+		return
+	}
+
+	zenityNotify("TimeReg", fmt.Sprintf("Lunch %s-%s", fromParsed, toParsed))
 	t.updateStatus()
 	go t.worker.SyncNow()
 }

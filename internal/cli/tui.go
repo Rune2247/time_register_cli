@@ -64,6 +64,8 @@ const (
 	phaseEditEntryList
 	phaseEditFieldSelect
 	phaseEditValue
+	phaseLunchFrom
+	phaseLunchTo
 	phaseOptionsMenu
 	phasePurgeFrom
 	phasePurgeTo
@@ -120,6 +122,10 @@ type model struct {
 	err           error
 	quitting      bool
 	statusHeader  string
+
+	// lunch state
+	lunchFrom string
+	lunchDate string // set when backfilling lunch, empty for today
 
 	// backfill state
 	backfillType string
@@ -266,7 +272,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect, phaseOptionsMenu:
 		return m.updateMenu(msg)
-	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
+	case phaseInput, phaseLunchFrom, phaseLunchTo, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
 		return m.updateInput(msg)
 	case phaseResult:
 		return m.updateResult(msg)
@@ -294,6 +300,13 @@ func (m model) goBack() (tea.Model, tea.Cmd) {
 		m.phase = phaseEditEntryList
 		m.cursor = 0
 		m.menuItems = m.entriesToMenuItems()
+		m.err = nil
+		return m, nil
+	case phaseLunchTo:
+		m.phase = phaseLunchFrom
+		m.inputPrompt = "Lunch from (HH:MM)"
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "12:00"
 		m.err = nil
 		return m, nil
 	case phasePurgeFrom:
@@ -406,9 +419,12 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		})
 
 	case "lunch":
-		return m.showResultWithCapture(func() error {
-			return actions.StartLunch(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
-		})
+		m.lunchDate = ""
+		m.phase = phaseLunchFrom
+		m.inputPrompt = "Lunch from (HH:MM)"
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "12:00"
+		return m, nil
 
 	case "end":
 		return m.showResultWithCapture(func() error {
@@ -495,6 +511,43 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			return actions.StartAssignment(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen(), value)
 		})
 
+	case phaseLunchFrom:
+		if value == "" {
+			m.err = fmt.Errorf("from time cannot be empty")
+			return m, nil
+		}
+		from, err := actions.ParseTimeInput(value)
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		m.lunchFrom = from
+		m.phase = phaseLunchTo
+		m.inputPrompt = fmt.Sprintf("Lunch to (from: %s)", from)
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "12:30"
+		m.err = nil
+		return m, nil
+
+	case phaseLunchTo:
+		if value == "" {
+			m.err = fmt.Errorf("to time cannot be empty")
+			return m, nil
+		}
+		to, err := actions.ParseTimeInput(value)
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		lunchFrom := m.lunchFrom
+		lunchDate := m.lunchDate
+		if lunchDate == "" {
+			lunchDate = actions.TodayInCopenhagen()
+		}
+		return m.showResultWithCapture(func() error {
+			return actions.InsertLunch(m.db, lunchDate, lunchFrom, to)
+		})
+
 	case phaseHolidayDate:
 		date := actions.TodayInCopenhagen()
 		if value != "" {
@@ -520,6 +573,17 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.backfillDate = parsed
+
+		if m.backfillType == "lunch" {
+			m.lunchDate = parsed
+			m.phase = phaseLunchFrom
+			m.inputPrompt = "Lunch from (HH:MM)"
+			m.textInput.SetValue("")
+			m.textInput.Placeholder = "12:00"
+			m.err = nil
+			return m, nil
+		}
+
 		m.phase = phaseBackfillTime
 		m.inputPrompt = "Time (HH:MM, e.g. 8:30 or 16:00)"
 		m.textInput.SetValue("")
@@ -543,10 +607,6 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		case "end":
 			return m.showResultWithCapture(func() error {
 				return actions.EndDay(m.db, m.backfillDate, m.backfillTime)
-			})
-		case "lunch":
-			return m.showResultWithCapture(func() error {
-				return actions.StartLunch(m.db, m.backfillDate, m.backfillTime)
 			})
 		case "break":
 			return m.showResultWithCapture(func() error {
@@ -891,7 +951,7 @@ func (m model) View() string {
 		}
 		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
 
-	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
+	case phaseInput, phaseLunchFrom, phaseLunchTo, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
 		b.WriteString(fmt.Sprintf("%s:\n\n", m.inputPrompt))
 		b.WriteString("  " + m.textInput.View())
 		if m.err != nil {

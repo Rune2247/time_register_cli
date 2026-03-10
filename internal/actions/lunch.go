@@ -7,116 +7,108 @@ import (
 	"github.com/rlf/time_register_cli/internal/models"
 )
 
-const defaultLunchMinutes = 30
+func InsertLunch(d *db.DB, date, startTime, endTime string) error {
+	dur, err := CalcDurationMinutes(startTime, endTime)
+	if err != nil {
+		return fmt.Errorf("calc lunch duration: %w", err)
+	}
 
-func StartLunch(d *db.DB, date, triggerTime string) error {
 	entries, err := d.GetEntriesByDate(date)
 	if err != nil {
 		return fmt.Errorf("get entries: %w", err)
 	}
 
-	// Find the entry that covers the lunch trigger time
-	var covering *models.Entry
+	// Find entries that the lunch overlaps with and split them
 	for i := range entries {
 		e := &entries[i]
-		if e.EntryType == models.EntryHoliday {
+		if e.EntryType == models.EntryHoliday || e.EntryType == models.EntryLunch || e.EntryType == models.EntryBreak {
 			continue
 		}
-		if e.StartTime <= triggerTime && (e.EndTime == "" || e.EndTime > triggerTime) {
-			covering = e
+		eEnd := e.EndTime
+		if eEnd == "" {
+			// Open entry — close it at lunch start
+			if e.StartTime < startTime {
+				closeDur, err := CalcDurationMinutes(e.StartTime, startTime)
+				if err != nil {
+					return fmt.Errorf("calc duration for %s-%s: %w", e.StartTime, startTime, err)
+				}
+				if err := d.UpdateEntryEndTime(e.ID, startTime, closeDur); err != nil {
+					return fmt.Errorf("close open entry: %w", err)
+				}
+				fmt.Printf("%s %s-%s\n", e.Name, e.StartTime, startTime)
+			}
+			continue
+		}
+
+		// Check overlap: entry.Start < lunchEnd AND entry.End > lunchStart
+		if e.StartTime < endTime && eEnd > startTime {
+			if err := splitEntry(d, date, e, startTime, endTime); err != nil {
+				return err
+			}
 		}
 	}
 
-	if covering != nil && covering.EndTime != "" {
-		// Closed entry spans lunch time — split it
-		if err := splitForLunch(d, date, covering, triggerTime); err != nil {
-			return err
-		}
-		TriggerSync(d)
-		return nil
-	}
-
-	// Open entry or no covering entry — use original behavior
-	if err := closeOpenEntry(d, date, triggerTime); err != nil {
-		return err
-	}
-
-	entry := &models.Entry{
-		Date:      date,
-		EntryType: models.EntryLunch,
-		Name:      "Lunch",
-		StartTime: triggerTime,
-		EndTime:   "",
-	}
-
-	id, err := d.InsertEntry(entry)
-	if err != nil {
-		return fmt.Errorf("insert lunch: %w", err)
-	}
-
-	fmt.Printf("Lunch started at %s (id: %d)\n", triggerTime, id)
-	TriggerSync(d)
-	return nil
-}
-
-// splitForLunch splits a closed entry around a 30-minute lunch break.
-// e.g. Work 8:00-16:00 + lunch at 12:00 → Work 8:00-12:00, Lunch 12:00-12:30, Work 12:30-16:00
-func splitForLunch(d *db.DB, date string, covering *models.Entry, lunchStart string) error {
-	lunchEnd, err := AddMinutes(lunchStart, defaultLunchMinutes)
-	if err != nil {
-		return err
-	}
-
-	originalEnd := covering.EndTime
-	originalName := covering.Name
-	originalType := covering.EntryType
-
-	// 1. Shrink covering entry to end at lunch start
-	dur, err := CalcDurationMinutes(covering.StartTime, lunchStart)
-	if err != nil {
-		return fmt.Errorf("calc duration for %s-%s: %w", covering.StartTime, lunchStart, err)
-	}
-	if err := d.UpdateEntryEndTime(covering.ID, lunchStart, dur); err != nil {
-		return fmt.Errorf("shrink entry: %w", err)
-	}
-	fmt.Printf("%s %s-%s\n", originalName, covering.StartTime, lunchStart)
-
-	// 2. Insert lunch entry (closed, 30 min)
-	lunchDur, err := CalcDurationMinutes(lunchStart, lunchEnd)
-	if err != nil {
-		return fmt.Errorf("calc lunch duration for %s-%s: %w", lunchStart, lunchEnd, err)
-	}
+	// Insert the lunch entry
 	lunchEntry := &models.Entry{
 		Date:            date,
 		EntryType:       models.EntryLunch,
 		Name:            "Lunch",
-		StartTime:       lunchStart,
-		EndTime:         lunchEnd,
-		DurationMinutes: lunchDur,
+		StartTime:       startTime,
+		EndTime:         endTime,
+		DurationMinutes: dur,
 	}
-	if _, err := d.InsertEntry(lunchEntry); err != nil {
+	id, err := d.InsertEntry(lunchEntry)
+	if err != nil {
 		return fmt.Errorf("insert lunch: %w", err)
 	}
-	fmt.Printf("Lunch %s-%s\n", lunchStart, lunchEnd)
 
-	// 3. Insert continuation entry (same name/type, from lunch end to original end)
-	if lunchEnd < originalEnd {
-		contDur, err := CalcDurationMinutes(lunchEnd, originalEnd)
+	fmt.Printf("Lunch %s-%s (id: %d)\n", startTime, endTime, id)
+	TriggerSync(d)
+	return nil
+}
+
+// splitEntry splits a closed entry around a time window (e.g. lunch or break).
+// e.g. Work 8:00-16:00 + split 12:00-12:30 → Work 8:00-12:00, Work 12:30-16:00
+func splitEntry(d *db.DB, date string, e *models.Entry, splitStart, splitEnd string) error {
+	originalEnd := e.EndTime
+	originalName := e.Name
+	originalType := e.EntryType
+
+	// Shrink entry to end at split start
+	if e.StartTime < splitStart {
+		dur, err := CalcDurationMinutes(e.StartTime, splitStart)
 		if err != nil {
-			return fmt.Errorf("calc continuation duration for %s-%s: %w", lunchEnd, originalEnd, err)
+			return fmt.Errorf("calc duration for %s-%s: %w", e.StartTime, splitStart, err)
+		}
+		if err := d.UpdateEntryEndTime(e.ID, splitStart, dur); err != nil {
+			return fmt.Errorf("shrink entry: %w", err)
+		}
+		fmt.Printf("%s %s-%s\n", originalName, e.StartTime, splitStart)
+	} else {
+		// Entry starts within or at split start — delete it
+		if err := d.DeleteEntry(e.ID); err != nil {
+			return fmt.Errorf("delete covered entry: %w", err)
+		}
+	}
+
+	// Insert continuation entry after the split window
+	if splitEnd < originalEnd {
+		contDur, err := CalcDurationMinutes(splitEnd, originalEnd)
+		if err != nil {
+			return fmt.Errorf("calc continuation duration for %s-%s: %w", splitEnd, originalEnd, err)
 		}
 		contEntry := &models.Entry{
 			Date:            date,
 			EntryType:       originalType,
 			Name:            originalName,
-			StartTime:       lunchEnd,
+			StartTime:       splitEnd,
 			EndTime:         originalEnd,
 			DurationMinutes: contDur,
 		}
 		if _, err := d.InsertEntry(contEntry); err != nil {
 			return fmt.Errorf("insert continuation: %w", err)
 		}
-		fmt.Printf("%s %s-%s\n", originalName, lunchEnd, originalEnd)
+		fmt.Printf("%s %s-%s\n", originalName, splitEnd, originalEnd)
 	}
 
 	return nil
