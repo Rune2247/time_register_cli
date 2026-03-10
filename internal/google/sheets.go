@@ -94,8 +94,9 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 	rows = append(rows, []interface{}{"Date", "Day", "Type", "Name", "Start", "End", "Hours"})
 
 	currentRow := 2 // 1-indexed, after header
-	weekStartRow := currentRow
+	dataStartRow := currentRow // will be set after week header
 	var weekFormulaRows []int
+	needsWeekHeader := true
 
 	daysInMonth := daysIn(t.Year(), t.Month())
 
@@ -104,19 +105,27 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		dayName := d.Weekday().String()[:3]
 		dateStr := d.Format("2006-01-02")
 
+		// Week header before the first day of each week
+		if needsWeekHeader {
+			_, week := d.ISOWeek()
+			rows = append(rows, []interface{}{
+				fmt.Sprintf("Week %d", week), "", "", "", "", "", "",
+			})
+			currentRow++
+			dataStartRow = currentRow
+			needsWeekHeader = false
+		}
+
 		dayEntries := entryMap[dateStr]
 
 		if len(dayEntries) == 0 {
-			// Empty day — one blank row
 			rows = append(rows, []interface{}{dateStr, dayName, "", "", "", "", ""})
 			currentRow++
 		} else {
-			// One row per entry
 			for i, e := range dayEntries {
 				date := dateStr
 				dn := dayName
 				if i > 0 {
-					// Only show date/day on first row
 					date = ""
 					dn = ""
 				}
@@ -133,31 +142,28 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 
 		// Week summary after Sunday or last day of month
 		if d.Weekday() == time.Sunday || day == daysInMonth {
-			_, week := d.ISOWeek()
-
 			workFormula := fmt.Sprintf(
 				`=SUMPRODUCT((C%d:C%d="Assignment")*(G%d:G%d))`,
-				weekStartRow, currentRow-1,
-				weekStartRow, currentRow-1,
+				dataStartRow, currentRow-1,
+				dataStartRow, currentRow-1,
 			)
 			lunchFormula := fmt.Sprintf(
 				`=SUMPRODUCT((C%d:C%d="Lunch")*(G%d:G%d))`,
-				weekStartRow, currentRow-1,
-				weekStartRow, currentRow-1,
+				dataStartRow, currentRow-1,
+				dataStartRow, currentRow-1,
 			)
 			breakFormula := fmt.Sprintf(
 				`=SUMPRODUCT((C%d:C%d="Break")*(G%d:G%d))`,
-				weekStartRow, currentRow-1,
-				weekStartRow, currentRow-1,
+				dataStartRow, currentRow-1,
+				dataStartRow, currentRow-1,
 			)
 
-			// Label row
+			// Summary labels + formulas
 			rows = append(rows, []interface{}{
-				fmt.Sprintf("Week %d", week), "", "", "", "Work", "Lunch", "Break",
+				"", "", "", "", "Work", "Lunch", "Break",
 			})
 			currentRow++
 
-			// Formula row
 			rows = append(rows, []interface{}{
 				"", "", "", "", workFormula, lunchFormula, breakFormula,
 			})
@@ -168,7 +174,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 			rows = append(rows, []interface{}{"", "", "", "", "", "", ""})
 			currentRow++
 
-			weekStartRow = currentRow
+			needsWeekHeader = true
 		}
 	}
 
@@ -192,27 +198,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		}
 	}
 
-	monthTotalRow := currentRow
 	rows = append(rows, []interface{}{"Month Total", "", "", "", monthWorkFormula, monthLunchFormula, monthBreakFormula})
-	currentRow++
-
-	// Year accumulated — INDEX/MATCH to find previous month's year total
-	prevMonth := t.AddDate(0, -1, 0)
-	prevTab := prevMonth.Format("2006-01")
-	yearWorkFormula := fmt.Sprintf(
-		`=IFERROR(INDEX('%s'!E:E,MATCH("Year Accumulated",'%s'!A:A,0)),0)+E%d`,
-		prevTab, prevTab, monthTotalRow,
-	)
-	yearLunchFormula := fmt.Sprintf(
-		`=IFERROR(INDEX('%s'!F:F,MATCH("Year Accumulated",'%s'!A:A,0)),0)+F%d`,
-		prevTab, prevTab, monthTotalRow,
-	)
-	yearBreakFormula := fmt.Sprintf(
-		`=IFERROR(INDEX('%s'!G:G,MATCH("Year Accumulated",'%s'!A:A,0)),0)+G%d`,
-		prevTab, prevTab, monthTotalRow,
-	)
-
-	rows = append(rows, []interface{}{"Year Accumulated", "", "", "", yearWorkFormula, yearLunchFormula, yearBreakFormula})
 
 	// Write everything
 	rangeStr := fmt.Sprintf("'%s'!A1", yearMonth)
