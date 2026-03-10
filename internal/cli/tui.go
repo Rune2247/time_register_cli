@@ -205,6 +205,13 @@ func (m model) buildStatusHeader() string {
 		b.WriteString("\n")
 	}
 
+	unclosed, err := m.db.GetUnclosedDays(today, 30)
+	if err == nil && len(unclosed) > 0 {
+		days := strings.Join(unclosed, ", ")
+		b.WriteString(errorStyle.Render(fmt.Sprintf("  Unclosed: %s", days)))
+		b.WriteString("\n")
+	}
+
 	return b.String()
 }
 

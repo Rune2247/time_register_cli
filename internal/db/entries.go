@@ -65,6 +65,30 @@ func (d *DB) GetLastOpenEntry(date string) (*models.Entry, error) {
 	return scanEntry(row)
 }
 
+// GetUnclosedDays returns dates (excluding today) where the last entry has no end_time.
+func (d *DB) GetUnclosedDays(today string, limit int) ([]string, error) {
+	rows, err := d.conn.Query(
+		`SELECT DISTINCT e.date FROM entries e
+		 WHERE e.date != ? AND e.end_time = '' AND e.start_time != ''
+		 ORDER BY e.date DESC LIMIT ?`,
+		today, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query unclosed days: %w", err)
+	}
+	defer rows.Close()
+
+	var dates []string
+	for rows.Next() {
+		var date string
+		if err := rows.Scan(&date); err != nil {
+			return nil, fmt.Errorf("scan date: %w", err)
+		}
+		dates = append(dates, date)
+	}
+	return dates, rows.Err()
+}
+
 // GetDistinctDates returns all dates that have entries, most recent first.
 func (d *DB) GetDistinctDates(limit int) ([]string, error) {
 	rows, err := d.conn.Query(
