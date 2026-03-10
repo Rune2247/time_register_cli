@@ -51,10 +51,11 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 		}
 	}
 
+	ctx := context.Background()
+	sheetID, calID := GetGoogleConfig(d)
+
 	// Delete calendar events for each day in range
-	_, calID := GetGoogleConfig(d)
 	if calID != "" {
-		ctx := context.Background()
 		cal, err := googleapi.NewCalendarClient(ctx, calID)
 		if err != nil {
 			log.Printf("calendar client error: %v", err)
@@ -64,6 +65,21 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 				if err := cal.DeleteEventsForDate(dateStr); err != nil {
 					log.Printf("delete calendar events for %s: %v", dateStr, err)
 				}
+			}
+			fmt.Println("Cleared calendar events")
+		}
+	}
+
+	// Clear sheet entries for the date range
+	if sheetID != "" {
+		sc, err := googleapi.NewSheetsClient(ctx, sheetID)
+		if err != nil {
+			log.Printf("sheets client error: %v", err)
+		} else {
+			if err := sc.ClearEntriesForDateRange(fromDate, toDate); err != nil {
+				log.Printf("clear sheet entries: %v", err)
+			} else {
+				fmt.Println("Cleared spreadsheet entries")
 			}
 		}
 	}

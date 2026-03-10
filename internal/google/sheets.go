@@ -249,6 +249,74 @@ func (c *SheetsClient) WriteEntry(entry *models.Entry) error {
 	return nil
 }
 
+// ClearEntriesForDateRange blanks out the data columns (Assignment, Start, End, Hours)
+// for all rows whose date falls within [fromDate, toDate], preserving the sheet structure.
+func (c *SheetsClient) ClearEntriesForDateRange(fromDate, toDate string) error {
+	from, err := time.Parse("2006-01-02", fromDate)
+	if err != nil {
+		return fmt.Errorf("parse from date: %w", err)
+	}
+	to, err := time.Parse("2006-01-02", toDate)
+	if err != nil {
+		return fmt.Errorf("parse to date: %w", err)
+	}
+
+	// Collect all months in the range
+	months := map[string]bool{}
+	for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
+		months[d.Format("2006-01")] = true
+	}
+
+	for yearMonth := range months {
+		if err := c.clearEntriesInTab(yearMonth, fromDate, toDate); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *SheetsClient) clearEntriesInTab(yearMonth, fromDate, toDate string) error {
+	rangeStr := fmt.Sprintf("'%s'!A:F", yearMonth)
+	resp, err := c.srv.Spreadsheets.Values.Get(c.spreadsheetID, rangeStr).Do()
+	if err != nil {
+		return fmt.Errorf("read sheet %s: %w", yearMonth, err)
+	}
+
+	for i, row := range resp.Values {
+		if len(row) == 0 {
+			continue
+		}
+		cellVal := fmt.Sprintf("%v", row[0])
+		// Check if this is a date row in the purge range
+		_, parseErr := time.Parse("2006-01-02", cellVal)
+		if parseErr != nil {
+			continue
+		}
+		if cellVal < fromDate || cellVal > toDate {
+			continue
+		}
+		// Only clear rows that have data in column C (assignment name)
+		if len(row) < 3 || fmt.Sprintf("%v", row[2]) == "" {
+			continue
+		}
+
+		// Blank out columns C-F (keep date and day name)
+		rowNum := i + 1 // 1-indexed
+		clearRange := fmt.Sprintf("'%s'!C%d:F%d", yearMonth, rowNum, rowNum)
+		vr := &sheets.ValueRange{
+			Values: [][]interface{}{{"", "", "", ""}},
+		}
+		_, err := c.srv.Spreadsheets.Values.Update(c.spreadsheetID, clearRange, vr).
+			ValueInputOption("RAW").Do()
+		if err != nil {
+			return fmt.Errorf("clear row %d in %s: %w", rowNum, yearMonth, err)
+		}
+	}
+
+	return nil
+}
+
 func daysIn(year int, month time.Month) int {
 	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
