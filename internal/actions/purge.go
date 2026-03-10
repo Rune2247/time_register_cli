@@ -33,11 +33,6 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 		return fmt.Errorf("get entries: %w", err)
 	}
 
-	if len(entries) == 0 {
-		fmt.Printf("No entries found between %s and %s\n", fromDate, toDate)
-		return nil
-	}
-
 	// Count by type
 	var workCount, lunchCount, otherCount int
 	for _, e := range entries {
@@ -70,7 +65,7 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 		}
 	}
 
-	// Delete from SQLite first
+	// Delete from SQLite
 	deleted, err := d.DeleteEntriesByDateRange(fromDate, toDate)
 	if err != nil {
 		return fmt.Errorf("delete entries: %w", err)
@@ -88,12 +83,7 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 				fmt.Println("Reset spreadsheet tabs")
 			}
 
-			// Re-sync remaining entries in affected months by resetting their sync flags
-			for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
-				dateStr := day.Format("2006-01-02")
-				_ = d.ResetSyncFlagsForDate(dateStr)
-			}
-			// Also reset flags for other dates in the same months (their sheet rows were cleared too)
+			// Reset sync flags for remaining entries in affected months so they re-sync
 			done := map[string]bool{}
 			for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
 				ym := day.Format("2006-01")
@@ -107,12 +97,15 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 	}
 
 	fmt.Printf("Purged %s to %s\n", fromDate, toDate)
-	fmt.Printf("Removed: %d entries (%d assignments, %d lunch breaks", deleted, workCount, lunchCount)
-	if otherCount > 0 {
-		fmt.Printf(", %d other", otherCount)
+	if deleted > 0 {
+		fmt.Printf("Removed: %d entries (%d assignments, %d lunch breaks", deleted, workCount, lunchCount)
+		if otherCount > 0 {
+			fmt.Printf(", %d other", otherCount)
+		}
+		fmt.Println(")")
+	} else {
+		fmt.Println("No local entries found (cleaned Google services only)")
 	}
-	fmt.Println(")")
-	fmt.Println("Remaining entries in affected months will re-sync automatically")
 
 	return nil
 }
