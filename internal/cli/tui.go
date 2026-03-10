@@ -452,6 +452,12 @@ func (m model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			return m.handleInputSubmit()
+		case "tab":
+			if m.textInput.Value() == "" && m.textInput.Placeholder != "" {
+				m.textInput.SetValue(m.textInput.Placeholder)
+				m.textInput.CursorEnd()
+				return m, nil
+			}
 		}
 	}
 
@@ -868,7 +874,7 @@ func (m model) View() string {
 		if m.err != nil {
 			b.WriteString("\n" + errorStyle.Render(fmt.Sprintf("  Error: %s", m.err)))
 		}
-		b.WriteString(dimStyle.Render("\n\n  enter submit • esc back"))
+		b.WriteString(dimStyle.Render("\n\n  enter submit • tab autocomplete • esc back"))
 
 	case phaseResult:
 		if m.err != nil {
