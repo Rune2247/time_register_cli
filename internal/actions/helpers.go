@@ -46,6 +46,16 @@ func CalcDurationMinutes(startTime, endTime string) (int, error) {
 	return diff, nil
 }
 
+// AddMinutes adds minutes to a HH:MM time string and returns the result as HH:MM.
+func AddMinutes(timeStr string, minutes int) (string, error) {
+	t, err := time.Parse("15:04", timeStr)
+	if err != nil {
+		return "", fmt.Errorf("parse time %q: %w", timeStr, err)
+	}
+	t = t.Add(time.Duration(minutes) * time.Minute)
+	return t.Format("15:04"), nil
+}
+
 // NowInCopenhagen returns the current time in Europe/Copenhagen as HH:MM.
 func NowInCopenhagen() string {
 	loc, _ := time.LoadLocation("Europe/Copenhagen")
