@@ -92,6 +92,8 @@ var mainMenu = []menuItem{
 var optionsMenu = []menuItem{
 	{label: "Config", value: "config"},
 	{label: "Sync Now", value: "sync"},
+	{label: "Rebuild Calendar", value: "rebuild-calendar"},
+	{label: "Rebuild Sheets", value: "rebuild-sheets"},
 	{label: "Restart Daemon", value: "daemon"},
 	{label: "Purge Time Range", value: "purge"},
 	{label: "Setup Guide", value: "guide"},
@@ -722,6 +724,14 @@ func (m model) handleOptionsSelect(selected string) (tea.Model, tea.Cmd) {
 			fmt.Printf("Syncing %d entries...\n", len(entries))
 			w := syncpkg.NewWorker(m.db, 0)
 			return w.SyncNow()
+		})
+	case "rebuild-calendar":
+		return m.showResultWithCapture(func() error {
+			return actions.RebuildCalendar(m.db)
+		})
+	case "rebuild-sheets":
+		return m.showResultWithCapture(func() error {
+			return actions.RebuildSheets(m.db)
 		})
 	case "daemon":
 		return m.showResultWithCapture(func() error {

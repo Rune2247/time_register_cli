@@ -199,6 +199,36 @@ func (d *DB) GetUnsyncedEntries() ([]models.Entry, error) {
 	return scanEntries(rows)
 }
 
+// GetAllEntries returns all entries with end_time set, ordered by date and start_time.
+func (d *DB) GetAllEntries() ([]models.Entry, error) {
+	rows, err := d.conn.Query(
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		        posted_to_sheets, posted_to_calendar, created_at, updated_at
+		 FROM entries WHERE end_time != '' ORDER BY date ASC, start_time ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query all entries: %w", err)
+	}
+	defer rows.Close()
+	return scanEntries(rows)
+}
+
+// ResetAllCalendarFlags marks all entries as not posted to calendar.
+func (d *DB) ResetAllCalendarFlags() error {
+	_, err := d.conn.Exec(
+		`UPDATE entries SET posted_to_calendar = 0, updated_at = datetime('now') WHERE end_time != ''`,
+	)
+	return err
+}
+
+// ResetAllSheetsFlags marks all entries as not posted to sheets.
+func (d *DB) ResetAllSheetsFlags() error {
+	_, err := d.conn.Exec(
+		`UPDATE entries SET posted_to_sheets = 0, updated_at = datetime('now') WHERE start_time != ''`,
+	)
+	return err
+}
+
 func (d *DB) MarkPostedToSheets(id int64) error {
 	_, err := d.conn.Exec(
 		`UPDATE entries SET posted_to_sheets = 1, updated_at = datetime('now') WHERE id = ?`, id,

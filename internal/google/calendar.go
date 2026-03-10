@@ -67,6 +67,35 @@ func (c *CalendarClient) CreateEvent(entry *models.Entry) error {
 	return nil
 }
 
+// DeleteAllEvents deletes all events from the calendar.
+func (c *CalendarClient) DeleteAllEvents() (int, error) {
+	count := 0
+	pageToken := ""
+	for {
+		req := c.srv.Events.List(c.calendarID).SingleEvents(true).MaxResults(250)
+		if pageToken != "" {
+			req = req.PageToken(pageToken)
+		}
+		events, err := req.Do()
+		if err != nil {
+			return count, fmt.Errorf("list events: %w", err)
+		}
+
+		for _, ev := range events.Items {
+			if err := c.srv.Events.Delete(c.calendarID, ev.Id).Do(); err != nil {
+				return count, fmt.Errorf("delete event %s: %w", ev.Summary, err)
+			}
+			count++
+		}
+
+		if events.NextPageToken == "" {
+			break
+		}
+		pageToken = events.NextPageToken
+	}
+	return count, nil
+}
+
 // DeleteEventsForDate deletes all events on the given date from the calendar.
 func (c *CalendarClient) DeleteEventsForDate(date string) error {
 	loc := models.CopenhagenTZ
