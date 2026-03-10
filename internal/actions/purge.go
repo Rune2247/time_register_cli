@@ -70,24 +70,40 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 		}
 	}
 
-	// Clear sheet entries for the date range
+	// Delete from SQLite first
+	deleted, err := d.DeleteEntriesByDateRange(fromDate, toDate)
+	if err != nil {
+		return fmt.Errorf("delete entries: %w", err)
+	}
+
+	// Reset sheet tabs for affected months and re-sync remaining entries
 	if sheetID != "" {
 		sc, err := googleapi.NewSheetsClient(ctx, sheetID)
 		if err != nil {
 			log.Printf("sheets client error: %v", err)
 		} else {
-			if err := sc.ClearEntriesForDateRange(fromDate, toDate); err != nil {
-				log.Printf("clear sheet entries: %v", err)
+			if err := sc.ResetMonthTabs(fromDate, toDate); err != nil {
+				log.Printf("reset sheet tabs: %v", err)
 			} else {
-				fmt.Println("Cleared spreadsheet entries")
+				fmt.Println("Reset spreadsheet tabs")
+			}
+
+			// Re-sync remaining entries in affected months by resetting their sync flags
+			for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
+				dateStr := day.Format("2006-01-02")
+				_ = d.ResetSyncFlagsForDate(dateStr)
+			}
+			// Also reset flags for other dates in the same months (their sheet rows were cleared too)
+			done := map[string]bool{}
+			for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
+				ym := day.Format("2006-01")
+				if done[ym] {
+					continue
+				}
+				done[ym] = true
+				_ = d.ResetSyncFlagsForMonth(ym)
 			}
 		}
-	}
-
-	// Delete from SQLite
-	deleted, err := d.DeleteEntriesByDateRange(fromDate, toDate)
-	if err != nil {
-		return fmt.Errorf("delete entries: %w", err)
 	}
 
 	fmt.Printf("Purged %s to %s\n", fromDate, toDate)
@@ -96,6 +112,7 @@ func PurgeTimeRange(d *db.DB, fromDate, toDate string) error {
 		fmt.Printf(", %d other", otherCount)
 	}
 	fmt.Println(")")
+	fmt.Println("Remaining entries in affected months will re-sync automatically")
 
 	return nil
 }

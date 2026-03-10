@@ -249,9 +249,9 @@ func (c *SheetsClient) WriteEntry(entry *models.Entry) error {
 	return nil
 }
 
-// ClearEntriesForDateRange blanks out the data columns (Assignment, Start, End, Hours)
-// for all rows whose date falls within [fromDate, toDate], preserving the sheet structure.
-func (c *SheetsClient) ClearEntriesForDateRange(fromDate, toDate string) error {
+// ResetMonthTabs re-populates the month tabs for all months in the given date range,
+// clearing all entry data and restoring the blank template with formulas.
+func (c *SheetsClient) ResetMonthTabs(fromDate, toDate string) error {
 	from, err := time.Parse("2006-01-02", fromDate)
 	if err != nil {
 		return fmt.Errorf("parse from date: %w", err)
@@ -262,55 +262,16 @@ func (c *SheetsClient) ClearEntriesForDateRange(fromDate, toDate string) error {
 	}
 
 	// Collect all months in the range
-	months := map[string]bool{}
+	done := map[string]bool{}
 	for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
-		months[d.Format("2006-01")] = true
-	}
-
-	for yearMonth := range months {
-		if err := c.clearEntriesInTab(yearMonth, fromDate, toDate); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (c *SheetsClient) clearEntriesInTab(yearMonth, fromDate, toDate string) error {
-	rangeStr := fmt.Sprintf("'%s'!A:F", yearMonth)
-	resp, err := c.srv.Spreadsheets.Values.Get(c.spreadsheetID, rangeStr).Do()
-	if err != nil {
-		return fmt.Errorf("read sheet %s: %w", yearMonth, err)
-	}
-
-	for i, row := range resp.Values {
-		if len(row) == 0 {
+		ym := d.Format("2006-01")
+		if done[ym] {
 			continue
 		}
-		cellVal := fmt.Sprintf("%v", row[0])
-		// Check if this is a date row in the purge range
-		_, parseErr := time.Parse("2006-01-02", cellVal)
-		if parseErr != nil {
-			continue
-		}
-		if cellVal < fromDate || cellVal > toDate {
-			continue
-		}
-		// Only clear rows that have data in column C (assignment name)
-		if len(row) < 3 || fmt.Sprintf("%v", row[2]) == "" {
-			continue
-		}
-
-		// Blank out columns C-F (keep date and day name)
-		rowNum := i + 1 // 1-indexed
-		clearRange := fmt.Sprintf("'%s'!C%d:F%d", yearMonth, rowNum, rowNum)
-		vr := &sheets.ValueRange{
-			Values: [][]interface{}{{"", "", "", ""}},
-		}
-		_, err := c.srv.Spreadsheets.Values.Update(c.spreadsheetID, clearRange, vr).
-			ValueInputOption("RAW").Do()
-		if err != nil {
-			return fmt.Errorf("clear row %d in %s: %w", rowNum, yearMonth, err)
+		done[ym] = true
+		// Re-populate overwrites all data with the blank template
+		if err := c.populateMonthTab(ym); err != nil {
+			return fmt.Errorf("reset tab %s: %w", ym, err)
 		}
 	}
 

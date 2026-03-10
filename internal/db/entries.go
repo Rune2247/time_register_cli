@@ -121,6 +121,15 @@ func (d *DB) ResetSyncFlagsForDate(date string) error {
 	return err
 }
 
+// ResetSyncFlagsForMonth marks all entries in a month (YYYY-MM) as unsynced.
+func (d *DB) ResetSyncFlagsForMonth(yearMonth string) error {
+	_, err := d.conn.Exec(
+		`UPDATE entries SET posted_to_sheets = 0, posted_to_calendar = 0, updated_at = datetime('now')
+		 WHERE date LIKE ?`, yearMonth+"%",
+	)
+	return err
+}
+
 func (d *DB) GetUnsyncedEntries() ([]models.Entry, error) {
 	rows, err := d.conn.Query(
 		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
