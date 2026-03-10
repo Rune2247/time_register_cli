@@ -33,6 +33,7 @@ Syncs to Google Sheets and Google Calendar.`,
 		newWeekCmd(d),
 		newBackfillCmd(d),
 		newBacklogCmd(d),
+		newEditCmd(d),
 		newHolidayCmd(d),
 		newConfigCmd(d),
 		newReopenCmd(d),
@@ -169,6 +170,21 @@ Examples:
 			default:
 				return actions.StartAssignment(d, date, timeStr, args[3])
 			}
+		},
+	}
+}
+
+func newEditCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "edit",
+		Short: "Edit existing entries (interactive)",
+		Long: `Open the interactive editor to modify or delete past entries.
+
+Select a day, then an entry, then choose what to edit.
+Overlapping entries are automatically adjusted.
+Edited days are re-synced to Google Calendar and Sheets.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return RunEditTUI(d)
 		},
 	}
 }

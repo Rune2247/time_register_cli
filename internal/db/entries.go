@@ -95,6 +95,51 @@ func (d *DB) RemoveEndDay(date string) (bool, error) {
 	return true, nil
 }
 
+// GetDistinctDates returns all dates that have entries, most recent first.
+func (d *DB) GetDistinctDates(limit int) ([]string, error) {
+	rows, err := d.conn.Query(
+		`SELECT DISTINCT date FROM entries ORDER BY date DESC LIMIT ?`, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query distinct dates: %w", err)
+	}
+	defer rows.Close()
+
+	var dates []string
+	for rows.Next() {
+		var date string
+		if err := rows.Scan(&date); err != nil {
+			return nil, fmt.Errorf("scan date: %w", err)
+		}
+		dates = append(dates, date)
+	}
+	return dates, rows.Err()
+}
+
+// UpdateEntry updates an entry's name, start_time, end_time, and duration.
+func (d *DB) UpdateEntry(id int64, name, startTime, endTime string, durationMinutes int) error {
+	_, err := d.conn.Exec(
+		`UPDATE entries SET name = ?, start_time = ?, end_time = ?, duration_minutes = ?, updated_at = datetime('now') WHERE id = ?`,
+		name, startTime, endTime, durationMinutes, id,
+	)
+	return err
+}
+
+// DeleteEntry deletes an entry by ID.
+func (d *DB) DeleteEntry(id int64) error {
+	_, err := d.conn.Exec(`DELETE FROM entries WHERE id = ?`, id)
+	return err
+}
+
+// ResetSyncFlagsForDate marks all entries on a date as unsynced so they get re-posted.
+func (d *DB) ResetSyncFlagsForDate(date string) error {
+	_, err := d.conn.Exec(
+		`UPDATE entries SET posted_to_sheets = 0, posted_to_calendar = 0, updated_at = datetime('now') WHERE date = ?`,
+		date,
+	)
+	return err
+}
+
 func (d *DB) GetUnsyncedEntries() ([]models.Entry, error) {
 	rows, err := d.conn.Query(
 		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,

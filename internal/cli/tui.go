@@ -12,6 +12,7 @@ import (
 	"github.com/rlf/time_register_cli/internal/actions"
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
+	"github.com/rlf/time_register_cli/internal/models"
 )
 
 const guideQuickText = `Setup Guide
@@ -57,6 +58,10 @@ const (
 	phaseBackfillTime
 	phaseBackfillName
 	phaseHolidayDate
+	phaseEditDayList
+	phaseEditEntryList
+	phaseEditFieldSelect
+	phaseEditValue
 	phaseResult
 )
 
@@ -71,6 +76,7 @@ var mainMenu = []menuItem{
 	{label: "End Day", value: "end"},
 	{label: "Reopen Day", value: "reopen"},
 	{label: "Backfill", value: "backfill"},
+	{label: "Edit Entries", value: "edit"},
 	{label: "Holiday", value: "holiday"},
 	{label: "Status", value: "status"},
 	{label: "Config", value: "config"},
@@ -81,6 +87,13 @@ var backfillTypes = []menuItem{
 	{label: "Start Assignment", value: "assignment"},
 	{label: "Lunch", value: "lunch"},
 	{label: "End Day", value: "end"},
+}
+
+var editFieldOptions = []menuItem{
+	{label: "Name", value: "name"},
+	{label: "Start Time", value: "start"},
+	{label: "End Time", value: "end"},
+	{label: "Delete", value: "delete"},
 }
 
 type model struct {
@@ -99,6 +112,12 @@ type model struct {
 	backfillType string
 	backfillDate string
 	backfillTime string
+
+	// edit state
+	editDates     []string
+	editEntries   []models.Entry
+	editEntry     models.Entry
+	editField     string // "name", "start", "end"
 }
 
 func newModel(d *db.DB) model {
@@ -199,6 +218,24 @@ func RunTUI(d *db.DB) error {
 	return err
 }
 
+func RunEditTUI(d *db.DB) error {
+	m := newModel(d)
+	dates, err := m.db.GetDistinctDates(30)
+	if err != nil {
+		return err
+	}
+	if len(dates) == 0 {
+		fmt.Println("No entries to edit.")
+		return nil
+	}
+	m.editDates = dates
+	m.phase = phaseEditDayList
+	m.menuItems = m.datesToMenuItems()
+	p := tea.NewProgram(m)
+	_, err = p.Run()
+	return err
+}
+
 func (m model) Init() tea.Cmd {
 	return textinput.Blink
 }
@@ -219,24 +256,80 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 			return m, nil
 		case "esc":
-			m.phase = phaseMenu
-			m.cursor = 0
-			m.menuItems = mainMenu
-			m.err = nil
-			return m, nil
+			return m.goBack()
+
 		}
 	}
 
 	switch m.phase {
-	case phaseMenu, phaseBackfillType:
+	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect:
 		return m.updateMenu(msg)
-	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate:
+	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue:
 		return m.updateInput(msg)
 	case phaseResult:
 		return m.updateResult(msg)
 	}
 
 	return m, nil
+}
+
+func (m model) goBack() (tea.Model, tea.Cmd) {
+	switch m.phase {
+	case phaseEditEntryList:
+		// Back to day list
+		m.phase = phaseEditDayList
+		m.cursor = 0
+		m.menuItems = m.datesToMenuItems()
+		m.err = nil
+		return m, nil
+	case phaseEditFieldSelect:
+		// Back to entry list
+		m.phase = phaseEditEntryList
+		m.cursor = 0
+		m.menuItems = m.entriesToMenuItems()
+		m.err = nil
+		return m, nil
+	case phaseEditValue:
+		// Back to field select
+		m.phase = phaseEditFieldSelect
+		m.cursor = 0
+		m.menuItems = editFieldOptions
+		m.err = nil
+		return m, nil
+	default:
+		m.phase = phaseMenu
+		m.cursor = 0
+		m.menuItems = mainMenu
+		m.err = nil
+		return m, nil
+	}
+}
+
+func (m model) datesToMenuItems() []menuItem {
+	items := make([]menuItem, len(m.editDates))
+	for i, d := range m.editDates {
+		items[i] = menuItem{label: d, value: d}
+	}
+	return items
+}
+
+func (m model) entriesToMenuItems() []menuItem {
+	items := make([]menuItem, len(m.editEntries))
+	for i, e := range m.editEntries {
+		label := fmt.Sprintf("%s-%s  %s", e.StartTime, e.EndTime, e.Name)
+		if e.EndTime == "" {
+			label = fmt.Sprintf("%s-...   %s", e.StartTime, e.Name)
+		}
+		if e.EntryType == models.EntryEndDay {
+			label = fmt.Sprintf("%s       End Day", e.StartTime)
+		} else if e.EntryType == models.EntryLunch {
+			label = fmt.Sprintf("%s-%s  Lunch", e.StartTime, e.EndTime)
+		} else if e.EntryType == models.EntryHoliday {
+			label = fmt.Sprintf("           Holiday")
+		}
+		items[i] = menuItem{label: label, value: fmt.Sprintf("%d", e.ID)}
+	}
+	return items
 }
 
 func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -260,6 +353,16 @@ func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 	selected := m.menuItems[m.cursor].value
+
+	if m.phase == phaseEditDayList {
+		return m.handleEditDaySelect(selected)
+	}
+	if m.phase == phaseEditEntryList {
+		return m.handleEditEntrySelect(selected)
+	}
+	if m.phase == phaseEditFieldSelect {
+		return m.handleEditFieldSelect(selected)
+	}
 
 	if m.phase == phaseBackfillType {
 		m.backfillType = selected
@@ -288,6 +391,24 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		return m.showResultWithCapture(func() error {
 			return actions.EndDay(m.db, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
 		})
+
+	case "edit":
+		dates, err := m.db.GetDistinctDates(30)
+		if err != nil {
+			m.phase = phaseResult
+			m.err = err
+			return m, nil
+		}
+		if len(dates) == 0 {
+			m.phase = phaseResult
+			m.result = "No entries to edit."
+			return m, nil
+		}
+		m.editDates = dates
+		m.phase = phaseEditDayList
+		m.cursor = 0
+		m.menuItems = m.datesToMenuItems()
+		return m, nil
 
 	case "backfill":
 		m.phase = phaseBackfillType
@@ -429,8 +550,111 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		return m.showResultWithCapture(func() error {
 			return actions.StartAssignment(m.db, m.backfillDate, m.backfillTime, value)
 		})
+
+	case phaseEditValue:
+		if value == "" {
+			m.err = fmt.Errorf("value cannot be empty")
+			return m, nil
+		}
+		entry := m.editEntry
+		switch m.editField {
+		case "name":
+			entry.Name = value
+		case "start":
+			if !strings.Contains(value, ":") {
+				parsed, err := parseBacklogTime(value)
+				if err != nil {
+					m.err = err
+					return m, nil
+				}
+				value = parsed
+			}
+			entry.StartTime = value
+		case "end":
+			if !strings.Contains(value, ":") {
+				parsed, err := parseBacklogTime(value)
+				if err != nil {
+					m.err = err
+					return m, nil
+				}
+				value = parsed
+			}
+			entry.EndTime = value
+		}
+		return m.showResultWithCapture(func() error {
+			err := actions.UpdateEntryAndResolveOverlaps(m.db, entry)
+			if err != nil {
+				return err
+			}
+			return actions.ResyncDay(m.db, entry.Date)
+		})
 	}
 
+	return m, nil
+}
+
+func (m model) handleEditDaySelect(date string) (tea.Model, tea.Cmd) {
+	entries, err := m.db.GetEntriesByDate(date)
+	if err != nil {
+		m.phase = phaseResult
+		m.err = err
+		return m, nil
+	}
+	if len(entries) == 0 {
+		m.phase = phaseResult
+		m.result = "No entries for this day."
+		return m, nil
+	}
+	m.editEntries = entries
+	m.phase = phaseEditEntryList
+	m.cursor = 0
+	m.menuItems = m.entriesToMenuItems()
+	return m, nil
+}
+
+func (m model) handleEditEntrySelect(idStr string) (tea.Model, tea.Cmd) {
+	var id int64
+	fmt.Sscanf(idStr, "%d", &id)
+
+	for _, e := range m.editEntries {
+		if e.ID == id {
+			m.editEntry = e
+			break
+		}
+	}
+	m.phase = phaseEditFieldSelect
+	m.cursor = 0
+	m.menuItems = editFieldOptions
+	return m, nil
+}
+
+func (m model) handleEditFieldSelect(field string) (tea.Model, tea.Cmd) {
+	if field == "delete" {
+		return m.showResultWithCapture(func() error {
+			err := actions.DeleteEntryAndResync(m.db, m.editEntry)
+			if err != nil {
+				return err
+			}
+			return actions.ResyncDay(m.db, m.editEntry.Date)
+		})
+	}
+
+	m.editField = field
+	m.phase = phaseEditValue
+	m.textInput.SetValue("")
+	m.err = nil
+
+	switch field {
+	case "name":
+		m.inputPrompt = fmt.Sprintf("New name (current: %s)", m.editEntry.Name)
+		m.textInput.Placeholder = m.editEntry.Name
+	case "start":
+		m.inputPrompt = fmt.Sprintf("New start time (current: %s)", m.editEntry.StartTime)
+		m.textInput.Placeholder = m.editEntry.StartTime
+	case "end":
+		m.inputPrompt = fmt.Sprintf("New end time (current: %s)", m.editEntry.EndTime)
+		m.textInput.Placeholder = m.editEntry.EndTime
+	}
 	return m, nil
 }
 
@@ -526,7 +750,53 @@ func (m model) View() string {
 		}
 		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
 
-	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate:
+	case phaseEditDayList:
+		b.WriteString("Select a day to edit:\n\n")
+		for i, item := range m.menuItems {
+			if i == m.cursor {
+				b.WriteString(selectedStyle.Render(fmt.Sprintf("  > %s", item.label)))
+			} else {
+				b.WriteString(fmt.Sprintf("    %s", item.label))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
+
+	case phaseEditEntryList:
+		date := ""
+		if len(m.editEntries) > 0 {
+			date = m.editEntries[0].Date
+		}
+		b.WriteString(fmt.Sprintf("Entries for %s:\n\n", date))
+		for i, item := range m.menuItems {
+			if i == m.cursor {
+				b.WriteString(selectedStyle.Render(fmt.Sprintf("  > %s", item.label)))
+			} else {
+				b.WriteString(fmt.Sprintf("    %s", item.label))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
+
+	case phaseEditFieldSelect:
+		label := m.editEntry.Name
+		if m.editEntry.EntryType == models.EntryLunch {
+			label = "Lunch"
+		} else if m.editEntry.EntryType == models.EntryEndDay {
+			label = "End Day"
+		}
+		b.WriteString(fmt.Sprintf("Edit %s (%s-%s):\n\n", label, m.editEntry.StartTime, m.editEntry.EndTime))
+		for i, item := range m.menuItems {
+			if i == m.cursor {
+				b.WriteString(selectedStyle.Render(fmt.Sprintf("  > %s", item.label)))
+			} else {
+				b.WriteString(fmt.Sprintf("    %s", item.label))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
+
+	case phaseInput, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue:
 		b.WriteString(fmt.Sprintf("%s:\n\n", m.inputPrompt))
 		b.WriteString("  " + m.textInput.View())
 		if m.err != nil {
