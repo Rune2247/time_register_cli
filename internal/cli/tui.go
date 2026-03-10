@@ -89,6 +89,7 @@ var mainMenu = []menuItem{
 var optionsMenu = []menuItem{
 	{label: "Config", value: "config"},
 	{label: "Sync Now", value: "sync"},
+	{label: "Restart Daemon", value: "daemon"},
 	{label: "Purge Time Range", value: "purge"},
 	{label: "Setup Guide", value: "guide"},
 }
@@ -632,6 +633,10 @@ func (m model) handleOptionsSelect(selected string) (tea.Model, tea.Cmd) {
 			fmt.Printf("Syncing %d entries...\n", len(entries))
 			w := syncpkg.NewWorker(m.db, 0)
 			return w.SyncNow()
+		})
+	case "daemon":
+		return m.showResultWithCapture(func() error {
+			return RestartDaemon()
 		})
 	case "purge":
 		m.phase = phasePurgeFrom

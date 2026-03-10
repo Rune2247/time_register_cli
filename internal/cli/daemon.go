@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 
 	"github.com/rlf/time_register_cli/internal/db"
 	trayPkg "github.com/rlf/time_register_cli/internal/systray"
@@ -12,7 +13,7 @@ import (
 )
 
 func newDaemonCmd(d *db.DB) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "daemon",
 		Short: "Run the systray daemon (background sync + top bar widget)",
 		Long: `Run TimeReg as a background daemon with:
@@ -21,12 +22,64 @@ func newDaemonCmd(d *db.DB) *cobra.Command {
   - Desktop notifications for actions
 
 The systray shows your current assignment and elapsed time.
-Click it to start assignments, take lunch, or end the day.`,
+Click it to start assignments, take lunch, or end the day.
+
+Use 'timereg daemon restart' to kill any existing daemon and start a new one detached.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			trayPkg.Run(d)
 			return nil
 		},
 	}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "restart",
+		Short: "Kill any running daemon and start a new one detached",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return RestartDaemon()
+		},
+	})
+
+	return cmd
+}
+
+// RestartDaemon kills any running timereg daemon and starts a new one detached.
+func RestartDaemon() error {
+	// Kill existing daemon
+	_ = exec.Command("pkill", "-f", "timereg daemon").Run()
+
+	// Find timereg binary
+	binaryPath, err := exec.LookPath("timereg")
+	if err != nil {
+		binaryPath, err = os.Executable()
+		if err != nil {
+			return fmt.Errorf("could not find timereg binary: %w", err)
+		}
+	}
+
+	// Log file
+	home, _ := os.UserHomeDir()
+	logDir := filepath.Join(home, ".config", "timereg")
+	_ = os.MkdirAll(logDir, 0755)
+	logFile := filepath.Join(logDir, "daemon.log")
+
+	lf, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("open log file: %w", err)
+	}
+
+	proc := exec.Command(binaryPath, "daemon")
+	proc.Stdout = lf
+	proc.Stderr = lf
+	proc.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	if err := proc.Start(); err != nil {
+		lf.Close()
+		return fmt.Errorf("start daemon: %w", err)
+	}
+
+	lf.Close()
+	fmt.Printf("Daemon started (pid: %d, log: %s)\n", proc.Process.Pid, logFile)
+	return nil
 }
 
 func newAutostartCmd() *cobra.Command {
