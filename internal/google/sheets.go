@@ -124,26 +124,18 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 
 		dayEntries := entryMap[dateStr]
 
-		if len(dayEntries) == 0 {
-			rows = append(rows, []interface{}{dateStr, dayName, "", "", "", "", ""})
+		// Date always gets its own row
+		rows = append(rows, []interface{}{dateStr, dayName, "", "", "", "", ""})
+		currentRow++
+
+		for _, e := range dayEntries {
+			entryType := capitalizeType(e.EntryType)
+			hours := float64(e.DurationMinutes) / 60.0
+
+			rows = append(rows, []interface{}{
+				"", "", entryType, e.Name, e.StartTime, e.EndTime, hours,
+			})
 			currentRow++
-		} else {
-			for i, e := range dayEntries {
-				date := dateStr
-				dn := dayName
-				if i > 0 {
-					date = ""
-					dn = ""
-				}
-
-				entryType := capitalizeType(e.EntryType)
-				hours := float64(e.DurationMinutes) / 60.0
-
-				rows = append(rows, []interface{}{
-					date, dn, entryType, e.Name, e.StartTime, e.EndTime, hours,
-				})
-				currentRow++
-			}
 		}
 
 		// Week summary after Sunday or last day of month
