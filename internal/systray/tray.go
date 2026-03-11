@@ -23,6 +23,7 @@ type Tray struct {
 	mStatus    *systray.MenuItem
 	mStart     *systray.MenuItem
 	mLunch     *systray.MenuItem
+	mBreak     *systray.MenuItem
 	mEnd       *systray.MenuItem
 	mSync      *systray.MenuItem
 	mQuit      *systray.MenuItem
@@ -47,7 +48,8 @@ func (t *Tray) onReady() {
 	systray.AddSeparator()
 
 	t.mStart = systray.AddMenuItem("Start Assignment", "Start a new assignment")
-	t.mLunch = systray.AddMenuItem("Lunch", "Start lunch break")
+	t.mLunch = systray.AddMenuItem("Lunch", "Register lunch break")
+	t.mBreak = systray.AddMenuItem("Break", "Start a break")
 	t.mEnd = systray.AddMenuItem("End Day", "End the work day")
 
 	systray.AddSeparator()
@@ -80,6 +82,8 @@ func (t *Tray) handleClicks() {
 			t.handleStart()
 		case <-t.mLunch.ClickedCh:
 			t.handleLunch()
+		case <-t.mBreak.ClickedCh:
+			t.handleBreak()
 		case <-t.mEnd.ClickedCh:
 			t.handleEnd()
 		case <-t.mSync.ClickedCh:
@@ -109,7 +113,6 @@ func (t *Tray) handleStart() {
 
 	zenityNotify("TimeReg", fmt.Sprintf("Started: %s at %s", name, now))
 	t.updateStatus()
-	go t.worker.SyncNow()
 }
 
 func (t *Tray) handleLunch() {
@@ -142,7 +145,6 @@ func (t *Tray) handleLunch() {
 
 	zenityNotify("TimeReg", fmt.Sprintf("Lunch %s-%s", fromParsed, toParsed))
 	t.updateStatus()
-	go t.worker.SyncNow()
 }
 
 func (t *Tray) handleEnd() {
@@ -159,7 +161,18 @@ func (t *Tray) handleEnd() {
 	msg := fmt.Sprintf("Day ended at %s\n%s", now, models.FormatStatusSummary(dayStatus, weekStatus))
 	zenityNotify("TimeReg", msg)
 	t.updateStatus()
-	go t.worker.SyncNow()
+}
+
+func (t *Tray) handleBreak() {
+	today := actions.TodayInCopenhagen()
+	now := actions.NowInCopenhagen()
+	if err := actions.StartBreak(t.db, today, now); err != nil {
+		zenityNotify("TimeReg Error", err.Error())
+		return
+	}
+
+	zenityNotify("TimeReg", fmt.Sprintf("Break started at %s", now))
+	t.updateStatus()
 }
 
 func (t *Tray) handleSync() {

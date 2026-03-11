@@ -62,6 +62,9 @@ func (w *Worker) run() {
 }
 
 func (w *Worker) syncOnce() error {
+	w.db.SyncMutex.Lock()
+	defer w.db.SyncMutex.Unlock()
+
 	ctx := context.Background()
 	spreadsheetID, calendarID := actions.GetGoogleConfig(w.db)
 

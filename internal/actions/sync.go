@@ -12,6 +12,9 @@ import (
 // TriggerSync rebuilds sheet tabs that have unsynced entries.
 // Calendar sync is left to the daemon since it needs complete entries.
 func TriggerSync(d *db.DB) {
+	d.SyncMutex.Lock()
+	defer d.SyncMutex.Unlock()
+
 	entries, err := d.GetUnsyncedForSheets()
 	if err != nil {
 		fmt.Printf("Sync: could not get unsynced entries: %v\n", err)

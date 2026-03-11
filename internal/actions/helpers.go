@@ -100,7 +100,13 @@ func ParseBacklogDate(dayStr, monthStr string) (string, error) {
 func ParseTimeInput(s string) (string, error) {
 	for i := range s {
 		if s[i] == ':' {
-			return s, nil
+			// Normalize to HH:MM (pad single-digit hour)
+			parts := s[:i]
+			rest := s[i+1:]
+			for len(parts) < 2 {
+				parts = "0" + parts
+			}
+			return parts + ":" + rest, nil
 		}
 	}
 	for len(s) < 4 {

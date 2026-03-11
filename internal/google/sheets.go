@@ -3,6 +3,7 @@ package google
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/rlf/time_register_cli/internal/models"
@@ -82,10 +83,15 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		return fmt.Errorf("parse month: %w", err)
 	}
 
-	// Group entries by date
+	// Group entries by date and sort each day chronologically
 	entryMap := map[string][]models.Entry{}
 	for _, e := range entries {
 		entryMap[e.Date] = append(entryMap[e.Date], e)
+	}
+	for date := range entryMap {
+		sort.Slice(entryMap[date], func(i, j int) bool {
+			return padTime(entryMap[date][i].StartTime) < padTime(entryMap[date][j].StartTime)
+		})
 	}
 
 	var rows [][]interface{}
@@ -222,4 +228,16 @@ func capitalizeType(t models.EntryType) string {
 
 func daysIn(year int, month time.Month) int {
 	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+// padTime normalizes a time like "8:00" to "08:00" for correct sorting.
+func padTime(t string) string {
+	if len(t) > 0 && len(t) < 5 {
+		for i := range t {
+			if t[i] == ':' && i < 2 {
+				return "0" + t
+			}
+		}
+	}
+	return t
 }
