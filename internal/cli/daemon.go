@@ -19,7 +19,7 @@ func newDaemonCmd(d *db.DB) *cobra.Command {
 		Short: "Run the systray daemon (background sync + top bar widget)",
 		Long: `Run TimeReg as a background daemon with:
   - Ubuntu top bar systray widget
-  - Background sync worker (every 5 minutes)
+  - Background sync worker (every hour)
   - Desktop notifications for actions
 
 The systray shows your current assignment and elapsed time.

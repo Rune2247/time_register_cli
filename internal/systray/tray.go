@@ -57,8 +57,8 @@ func (t *Tray) onReady() {
 	t.mSync = systray.AddMenuItem("Sync Now", "Sync entries to Google")
 	t.mQuit = systray.AddMenuItem("Quit", "Quit TimeReg")
 
-	// Start background sync worker (every 5 minutes)
-	t.worker = syncpkg.NewWorker(t.db, 5*time.Minute)
+	// Start background sync worker (every hour)
+	t.worker = syncpkg.NewWorker(t.db, 1*time.Hour)
 	t.worker.Start()
 
 	// Start status updater
