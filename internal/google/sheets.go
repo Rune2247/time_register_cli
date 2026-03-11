@@ -3,6 +3,7 @@ package google
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -130,7 +131,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 
 		for _, e := range dayEntries {
 			entryType := capitalizeType(e.EntryType)
-			hours := float64(e.DurationMinutes) / 60.0
+			hours := math.Round(float64(e.DurationMinutes)/60.0*100) / 100
 
 			rows = append(rows, []interface{}{
 				"", "", entryType, e.Name, e.StartTime, e.EndTime, hours,
