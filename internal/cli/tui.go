@@ -67,6 +67,7 @@ const (
 	phaseLunchFrom
 	phaseLunchTo
 	phaseOptionsMenu
+	phaseNoteInput
 	phasePurgeFrom
 	phasePurgeTo
 	phaseResult
@@ -81,6 +82,7 @@ var mainMenu = []menuItem{
 	{label: "Start Assignment", value: "start"},
 	{label: "Lunch", value: "lunch"},
 	{label: "Break", value: "break"},
+	{label: "Add Note", value: "note"},
 	{label: "End Day", value: "end"},
 	{label: "Backfill", value: "backfill"},
 	{label: "Edit Entries", value: "edit"},
@@ -274,7 +276,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect, phaseOptionsMenu:
 		return m.updateMenu(msg)
-	case phaseInput, phaseLunchFrom, phaseLunchTo, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
+	case phaseInput, phaseLunchFrom, phaseLunchTo, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phaseNoteInput, phasePurgeFrom, phasePurgeTo:
 		return m.updateInput(msg)
 	case phaseResult:
 		return m.updateResult(msg)
@@ -309,6 +311,12 @@ func (m model) goBack() (tea.Model, tea.Cmd) {
 		m.inputPrompt = "Lunch from (HH:MM)"
 		m.textInput.SetValue("")
 		m.textInput.Placeholder = "12:00"
+		m.err = nil
+		return m, nil
+	case phaseNoteInput:
+		m.phase = phaseMenu
+		m.cursor = 0
+		m.menuItems = mainMenu
 		m.err = nil
 		return m, nil
 	case phasePurgeFrom:
@@ -408,6 +416,14 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 
 	// Main menu
 	switch selected {
+	case "note":
+		m.phase = phaseNoteInput
+		m.inputPrompt = "Note text"
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "e.g. Fixed login bug"
+		m.err = nil
+		return m, nil
+
 	case "start":
 		m.phase = phaseInput
 		m.inputPrompt = "Assignment name"
@@ -630,6 +646,15 @@ func (m model) handleInputSubmit() (tea.Model, tea.Cmd) {
 		}
 		return m.showResultWithCapture(func() error {
 			return actions.StartAssignment(m.db, m.backfillDate, m.backfillTime, value)
+		})
+
+	case phaseNoteInput:
+		if value == "" {
+			m.err = fmt.Errorf("note text cannot be empty")
+			return m, nil
+		}
+		return m.showResultWithCapture(func() error {
+			return actions.AddNote(m.db, value)
 		})
 
 	case phasePurgeFrom:
@@ -961,7 +986,7 @@ func (m model) View() string {
 		}
 		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
 
-	case phaseInput, phaseLunchFrom, phaseLunchTo, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phasePurgeFrom, phasePurgeTo:
+	case phaseInput, phaseLunchFrom, phaseLunchTo, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phaseNoteInput, phasePurgeFrom, phasePurgeTo:
 		b.WriteString(fmt.Sprintf("%s:\n\n", m.inputPrompt))
 		b.WriteString("  " + m.textInput.View())
 		if m.err != nil {

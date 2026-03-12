@@ -33,6 +33,7 @@ type Entry struct {
 	StartTime        string    `json:"start_time"`
 	EndTime          string    `json:"end_time"`
 	DurationMinutes  int       `json:"duration_minutes"`
+	Notes            string    `json:"notes"`
 	PostedToSheets   bool      `json:"posted_to_sheets"`
 	PostedToCalendar bool      `json:"posted_to_calendar"`
 	CreatedAt        string    `json:"created_at"`

@@ -2,6 +2,7 @@ package actions
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rlf/time_register_cli/internal/db"
@@ -71,6 +72,17 @@ func PrintStatus(d *db.DB, date string) error {
 		fmt.Println("\nToday's entries:")
 		for i := range dayStatus.Entries {
 			fmt.Printf("  %s\n", dayStatus.Entries[i].FormatLine())
+		}
+
+		// Show notes for the current open entry
+		for i := range dayStatus.Entries {
+			e := &dayStatus.Entries[i]
+			if e.EndTime == "" && e.Notes != "" {
+				fmt.Printf("\nNotes (%s):\n", e.DisplayName())
+				for _, line := range strings.Split(e.Notes, "\n") {
+					fmt.Printf("  %s\n", line)
+				}
+			}
 		}
 	}
 

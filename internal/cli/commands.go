@@ -28,6 +28,7 @@ Syncs to Google Sheets and Google Calendar.`,
 		newLunchCmd(d),
 		newBreakCmd(d),
 		newEndCmd(d),
+		newNoteCmd(d),
 		newStatusCmd(d),
 		newWeekCmd(d),
 		newBackfillCmd(d),
@@ -98,6 +99,23 @@ func newEndCmd(d *db.DB) *cobra.Command {
 		Short: "End the day",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return actions.EndDay(d, actions.TodayInCopenhagen(), actions.NowInCopenhagen())
+		},
+	}
+}
+
+func newNoteCmd(d *db.DB) *cobra.Command {
+	return &cobra.Command{
+		Use:   "note <text>",
+		Short: "Add a note to the current active entry",
+		Long: `Add a timestamped note to the currently open entry.
+If no entry is active, the note is not saved.
+
+Examples:
+  timereg note "Fixed login bug"
+  timereg note "Reviewed PR #42"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return actions.AddNote(d, args[0])
 		},
 	}
 }

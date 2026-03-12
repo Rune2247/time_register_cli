@@ -87,5 +87,8 @@ func (d *DB) migrate() error {
 		}
 	}
 
+	// Add notes column if it doesn't exist (ALTER TABLE has no IF NOT EXISTS)
+	d.conn.Exec(`ALTER TABLE entries ADD COLUMN notes TEXT DEFAULT ''`)
+
 	return nil
 }

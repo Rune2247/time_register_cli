@@ -9,8 +9,8 @@ import (
 
 func (d *DB) InsertEntry(e *models.Entry) (int64, error) {
 	res, err := d.conn.Exec(
-		`INSERT INTO entries (date, entry_type, name, start_time, end_time, duration_minutes, posted_to_sheets, posted_to_calendar)
-		 VALUES (?, ?, ?, ?, ?, ?, 0, 0)`,
+		`INSERT INTO entries (date, entry_type, name, start_time, end_time, duration_minutes, notes, posted_to_sheets, posted_to_calendar)
+		 VALUES (?, ?, ?, ?, ?, ?, '', 0, 0)`,
 		e.Date, e.EntryType, e.Name, e.StartTime, e.EndTime, e.DurationMinutes,
 	)
 	if err != nil {
@@ -29,7 +29,7 @@ func (d *DB) UpdateEntryEndTime(id int64, endTime string, durationMinutes int) e
 
 func (d *DB) GetEntriesByDate(date string) ([]models.Entry, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes, notes,
 		        posted_to_sheets, posted_to_calendar, created_at, updated_at
 		 FROM entries WHERE date = ? ORDER BY start_time ASC`,
 		date,
@@ -43,7 +43,7 @@ func (d *DB) GetEntriesByDate(date string) ([]models.Entry, error) {
 
 func (d *DB) GetEntriesByDateRange(startDate, endDate string) ([]models.Entry, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes, notes,
 		        posted_to_sheets, posted_to_calendar, created_at, updated_at
 		 FROM entries WHERE date >= ? AND date <= ? ORDER BY date ASC, start_time ASC`,
 		startDate, endDate,
@@ -57,7 +57,7 @@ func (d *DB) GetEntriesByDateRange(startDate, endDate string) ([]models.Entry, e
 
 func (d *DB) GetLastOpenEntry(date string) (*models.Entry, error) {
 	row := d.conn.QueryRow(
-		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes, notes,
 		        posted_to_sheets, posted_to_calendar, created_at, updated_at
 		 FROM entries WHERE date = ? AND end_time = '' ORDER BY start_time DESC LIMIT 1`,
 		date,
@@ -157,7 +157,7 @@ func (d *DB) ResetSyncFlagsForMonth(yearMonth string) error {
 // GetUnsyncedForSheets returns entries not yet posted to sheets (any entry with a start time).
 func (d *DB) GetUnsyncedForSheets() ([]models.Entry, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes, notes,
 		        posted_to_sheets, posted_to_calendar, created_at, updated_at
 		 FROM entries WHERE posted_to_sheets = 0 AND start_time != ''
 		 ORDER BY date ASC, start_time ASC`,
@@ -172,7 +172,7 @@ func (d *DB) GetUnsyncedForSheets() ([]models.Entry, error) {
 // GetUnsyncedForCalendar returns completed entries not yet posted to calendar (needs end_time).
 func (d *DB) GetUnsyncedForCalendar() ([]models.Entry, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes, notes,
 		        posted_to_sheets, posted_to_calendar, created_at, updated_at
 		 FROM entries WHERE posted_to_calendar = 0 AND end_time != ''
 		 ORDER BY date ASC, start_time ASC`,
@@ -187,7 +187,7 @@ func (d *DB) GetUnsyncedForCalendar() ([]models.Entry, error) {
 // GetUnsyncedEntries returns entries not yet fully synced (used by status display).
 func (d *DB) GetUnsyncedEntries() ([]models.Entry, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes, notes,
 		        posted_to_sheets, posted_to_calendar, created_at, updated_at
 		 FROM entries WHERE (posted_to_sheets = 0 AND start_time != '') OR (posted_to_calendar = 0 AND end_time != '')
 		 ORDER BY date ASC, start_time ASC`,
@@ -202,7 +202,7 @@ func (d *DB) GetUnsyncedEntries() ([]models.Entry, error) {
 // GetAllEntries returns all entries with end_time set, ordered by date and start_time.
 func (d *DB) GetAllEntries() ([]models.Entry, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes,
+		`SELECT id, date, entry_type, name, start_time, end_time, duration_minutes, notes,
 		        posted_to_sheets, posted_to_calendar, created_at, updated_at
 		 FROM entries WHERE end_time != '' ORDER BY date ASC, start_time ASC`,
 	)
@@ -243,14 +243,34 @@ func (d *DB) MarkPostedToCalendar(id int64) error {
 	return err
 }
 
+// AppendNote appends a timestamped note to the current open entry's notes field.
+func (d *DB) AppendNote(id int64, note string) error {
+	var current sql.NullString
+	err := d.conn.QueryRow(`SELECT notes FROM entries WHERE id = ?`, id).Scan(&current)
+	if err != nil {
+		return fmt.Errorf("get notes: %w", err)
+	}
+
+	newNotes := note
+	if current.String != "" {
+		newNotes = current.String + "\n" + note
+	}
+
+	_, err = d.conn.Exec(
+		`UPDATE entries SET notes = ?, posted_to_sheets = 0, updated_at = datetime('now') WHERE id = ?`,
+		newNotes, id,
+	)
+	return err
+}
+
 func scanEntries(rows *sql.Rows) ([]models.Entry, error) {
 	var entries []models.Entry
 	for rows.Next() {
 		var e models.Entry
-		var name, startTime, endTime sql.NullString
+		var name, startTime, endTime, notes sql.NullString
 		var duration sql.NullInt64
 		if err := rows.Scan(
-			&e.ID, &e.Date, &e.EntryType, &name, &startTime, &endTime, &duration,
+			&e.ID, &e.Date, &e.EntryType, &name, &startTime, &endTime, &duration, &notes,
 			&e.PostedToSheets, &e.PostedToCalendar, &e.CreatedAt, &e.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan entry: %w", err)
@@ -258,6 +278,7 @@ func scanEntries(rows *sql.Rows) ([]models.Entry, error) {
 		e.Name = name.String
 		e.StartTime = startTime.String
 		e.EndTime = endTime.String
+		e.Notes = notes.String
 		if duration.Valid {
 			e.DurationMinutes = int(duration.Int64)
 		}
@@ -268,10 +289,10 @@ func scanEntries(rows *sql.Rows) ([]models.Entry, error) {
 
 func scanEntry(row *sql.Row) (*models.Entry, error) {
 	var e models.Entry
-	var name, startTime, endTime sql.NullString
+	var name, startTime, endTime, notes sql.NullString
 	var duration sql.NullInt64
 	err := row.Scan(
-		&e.ID, &e.Date, &e.EntryType, &name, &startTime, &endTime, &duration,
+		&e.ID, &e.Date, &e.EntryType, &name, &startTime, &endTime, &duration, &notes,
 		&e.PostedToSheets, &e.PostedToCalendar, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -283,6 +304,7 @@ func scanEntry(row *sql.Row) (*models.Entry, error) {
 	e.Name = name.String
 	e.StartTime = startTime.String
 	e.EndTime = endTime.String
+	e.Notes = notes.String
 	if duration.Valid {
 		e.DurationMinutes = int(duration.Int64)
 	}

@@ -24,6 +24,7 @@ type Tray struct {
 	mStart     *systray.MenuItem
 	mLunch     *systray.MenuItem
 	mBreak     *systray.MenuItem
+	mNote      *systray.MenuItem
 	mEnd       *systray.MenuItem
 	mSync      *systray.MenuItem
 	mQuit      *systray.MenuItem
@@ -50,6 +51,7 @@ func (t *Tray) onReady() {
 	t.mStart = systray.AddMenuItem("Start Assignment", "Start a new assignment")
 	t.mLunch = systray.AddMenuItem("Lunch", "Register lunch break")
 	t.mBreak = systray.AddMenuItem("Break", "Start a break")
+	t.mNote = systray.AddMenuItem("Add Note", "Add a note to the current entry")
 	t.mEnd = systray.AddMenuItem("End Day", "End the work day")
 
 	systray.AddSeparator()
@@ -84,6 +86,8 @@ func (t *Tray) handleClicks() {
 			t.handleLunch()
 		case <-t.mBreak.ClickedCh:
 			t.handleBreak()
+		case <-t.mNote.ClickedCh:
+			t.handleNote()
 		case <-t.mEnd.ClickedCh:
 			t.handleEnd()
 		case <-t.mSync.ClickedCh:
@@ -161,6 +165,18 @@ func (t *Tray) handleEnd() {
 	msg := fmt.Sprintf("Day ended at %s\n%s", now, models.FormatStatusSummary(dayStatus, weekStatus))
 	zenityNotify("TimeReg", msg)
 	t.updateStatus()
+}
+
+func (t *Tray) handleNote() {
+	text, err := zenityInput("TimeReg", "Add note:")
+	if err != nil || text == "" {
+		return
+	}
+
+	if err := actions.AddNote(t.db, text); err != nil {
+		zenityNotify("TimeReg Error", err.Error())
+		return
+	}
 }
 
 func (t *Tray) handleBreak() {

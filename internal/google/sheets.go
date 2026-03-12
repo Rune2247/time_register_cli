@@ -31,7 +31,7 @@ func NewSheetsClient(ctx context.Context, spreadsheetID string) (*SheetsClient, 
 }
 
 // Sheet columns:
-// A=Date, B=Day, C=Type, D=Name, E=Start, F=End, G=Hours
+// A=Date, B=Day, C=Type, D=Name, E=Start, F=End, G=Hours, H=Notes
 
 // ensureTab creates a tab if it doesn't exist. Returns true if created.
 func (c *SheetsClient) ensureTab(name string) error {
@@ -61,7 +61,7 @@ func (c *SheetsClient) ensureTab(name string) error {
 
 // clearTab clears all content from a tab.
 func (c *SheetsClient) clearTab(name string) error {
-	rangeStr := fmt.Sprintf("'%s'!A:G", name)
+	rangeStr := fmt.Sprintf("'%s'!A:H", name)
 	_, err := c.srv.Spreadsheets.Values.Clear(c.spreadsheetID, rangeStr, &sheets.ClearValuesRequest{}).Do()
 	if err != nil {
 		return fmt.Errorf("clear tab %s: %w", name, err)
@@ -98,7 +98,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 	var rows [][]interface{}
 
 	// Header
-	rows = append(rows, []interface{}{"Date", "Day", "Type", "Name", "Start", "End", "Hours"})
+	rows = append(rows, []interface{}{"Date", "Day", "Type", "Name", "Start", "End", "Hours", "Notes"})
 
 	currentRow := 2 // 1-indexed, after header
 	dataStartRow := currentRow // will be set after week header
@@ -116,7 +116,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		if needsWeekHeader {
 			_, week := d.ISOWeek()
 			rows = append(rows, []interface{}{
-				fmt.Sprintf("Week %d", week), "", "", "", "", "", "",
+				fmt.Sprintf("Week %d", week), "", "", "", "", "", "", "",
 			})
 			currentRow++
 			dataStartRow = currentRow
@@ -126,7 +126,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		dayEntries := entryMap[dateStr]
 
 		// Date always gets its own row
-		rows = append(rows, []interface{}{dateStr, dayName, "", "", "", "", ""})
+		rows = append(rows, []interface{}{dateStr, dayName, "", "", "", "", "", ""})
 		currentRow++
 
 		for _, e := range dayEntries {
@@ -134,7 +134,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 			hours := math.Round(float64(e.DurationMinutes)/60.0*100) / 100
 
 			rows = append(rows, []interface{}{
-				"", "", entryType, e.Name, e.StartTime, e.EndTime, hours,
+				"", "", entryType, e.Name, e.StartTime, e.EndTime, hours, e.Notes,
 			})
 			currentRow++
 		}
@@ -159,18 +159,18 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 
 			// Summary labels + formulas
 			rows = append(rows, []interface{}{
-				"", "", "", "", "Work", "Lunch", "Break",
+				"", "", "", "", "Work", "Lunch", "Break", "",
 			})
 			currentRow++
 
 			rows = append(rows, []interface{}{
-				"", "", "", "", workFormula, lunchFormula, breakFormula,
+				"", "", "", "", workFormula, lunchFormula, breakFormula, "",
 			})
 			weekFormulaRows = append(weekFormulaRows, currentRow)
 			currentRow++
 
 			// Blank separator
-			rows = append(rows, []interface{}{"", "", "", "", "", "", ""})
+			rows = append(rows, []interface{}{"", "", "", "", "", "", "", ""})
 			currentRow++
 
 			needsWeekHeader = true
@@ -197,7 +197,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		}
 	}
 
-	rows = append(rows, []interface{}{"Month Total", "", "", "", monthWorkFormula, monthLunchFormula, monthBreakFormula})
+	rows = append(rows, []interface{}{"Month Total", "", "", "", monthWorkFormula, monthLunchFormula, monthBreakFormula, ""})
 
 	// Write everything
 	rangeStr := fmt.Sprintf("'%s'!A1", yearMonth)
@@ -208,7 +208,43 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		return fmt.Errorf("write tab %s: %w", yearMonth, err)
 	}
 
+	// Set Notes column (H) to clip so it doesn't overflow into adjacent cells
+	sheetID, err := c.getSheetID(yearMonth)
+	if err == nil {
+		_, _ = c.srv.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+			Requests: []*sheets.Request{{
+				RepeatCell: &sheets.RepeatCellRequest{
+					Range: &sheets.GridRange{
+						SheetId:          sheetID,
+						StartColumnIndex: 7, // column H (0-indexed)
+						EndColumnIndex:   8,
+					},
+					Cell: &sheets.CellData{
+						UserEnteredFormat: &sheets.CellFormat{
+							WrapStrategy: "CLIP",
+						},
+					},
+					Fields: "userEnteredFormat.wrapStrategy",
+				},
+			}},
+		}).Do()
+	}
+
 	return nil
+}
+
+// getSheetID returns the numeric sheet ID for a tab name.
+func (c *SheetsClient) getSheetID(name string) (int64, error) {
+	ss, err := c.srv.Spreadsheets.Get(c.spreadsheetID).Do()
+	if err != nil {
+		return 0, err
+	}
+	for _, sheet := range ss.Sheets {
+		if sheet.Properties.Title == name {
+			return sheet.Properties.SheetId, nil
+		}
+	}
+	return 0, fmt.Errorf("sheet %q not found", name)
 }
 
 func capitalizeType(t models.EntryType) string {
