@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rlf/time_register_cli/internal/models"
@@ -133,8 +134,9 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 			entryType := capitalizeType(e.EntryType)
 			hours := math.Round(float64(e.DurationMinutes)/60.0*100) / 100
 
+			sheetNotes := strings.ReplaceAll(e.Notes, "\n", " | ")
 			rows = append(rows, []interface{}{
-				"", "", entryType, e.Name, e.StartTime, e.EndTime, hours, e.Notes,
+				"", "", entryType, e.Name, e.StartTime, e.EndTime, hours, sheetNotes,
 			})
 			currentRow++
 		}
@@ -208,43 +210,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		return fmt.Errorf("write tab %s: %w", yearMonth, err)
 	}
 
-	// Set Notes column (H) to clip so it doesn't overflow into adjacent cells
-	sheetID, err := c.getSheetID(yearMonth)
-	if err == nil {
-		_, _ = c.srv.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
-			Requests: []*sheets.Request{{
-				RepeatCell: &sheets.RepeatCellRequest{
-					Range: &sheets.GridRange{
-						SheetId:          sheetID,
-						StartColumnIndex: 7, // column H (0-indexed)
-						EndColumnIndex:   8,
-					},
-					Cell: &sheets.CellData{
-						UserEnteredFormat: &sheets.CellFormat{
-							WrapStrategy: "CLIP",
-						},
-					},
-					Fields: "userEnteredFormat.wrapStrategy",
-				},
-			}},
-		}).Do()
-	}
-
 	return nil
-}
-
-// getSheetID returns the numeric sheet ID for a tab name.
-func (c *SheetsClient) getSheetID(name string) (int64, error) {
-	ss, err := c.srv.Spreadsheets.Get(c.spreadsheetID).Do()
-	if err != nil {
-		return 0, err
-	}
-	for _, sheet := range ss.Sheets {
-		if sheet.Properties.Title == name {
-			return sheet.Properties.SheetId, nil
-		}
-	}
-	return 0, fmt.Errorf("sheet %q not found", name)
 }
 
 func capitalizeType(t models.EntryType) string {
