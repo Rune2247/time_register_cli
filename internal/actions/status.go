@@ -9,6 +9,28 @@ import (
 	"github.com/rlf/time_register_cli/internal/models"
 )
 
+// openEntryElapsed calculates elapsed minutes for any open entries using the current time.
+func openEntryElapsed(entries []models.Entry) (work, lunch, brk int) {
+	now := NowInCopenhagen()
+	for _, e := range entries {
+		if e.EndTime == "" && e.StartTime != "" {
+			elapsed, err := CalcDurationMinutes(e.StartTime, now)
+			if err != nil || elapsed <= 0 {
+				continue
+			}
+			switch e.EntryType {
+			case models.EntryAssignment:
+				work += elapsed
+			case models.EntryLunch:
+				lunch += elapsed
+			case models.EntryBreak:
+				brk += elapsed
+			}
+		}
+	}
+	return
+}
+
 func GetDayStatus(d *db.DB, date string) (*models.DayStatus, error) {
 	entries, err := d.GetEntriesByDate(date)
 	if err != nil {
@@ -16,12 +38,13 @@ func GetDayStatus(d *db.DB, date string) (*models.DayStatus, error) {
 	}
 
 	work, lunch, brk := models.AccumulateMinutes(entries)
+	ow, ol, ob := openEntryElapsed(entries)
 	return &models.DayStatus{
 		Date:         date,
 		Entries:      entries,
-		WorkMinutes:  work,
-		LunchMinutes: lunch,
-		BreakMinutes: brk,
+		WorkMinutes:  work + ow,
+		LunchMinutes: lunch + ol,
+		BreakMinutes: brk + ob,
 	}, nil
 }
 
@@ -47,12 +70,13 @@ func GetWeekStatus(d *db.DB, date string) (*models.WeekStatus, error) {
 	}
 
 	work, lunch, brk := models.AccumulateMinutes(entries)
+	ow, ol, ob := openEntryElapsed(entries)
 	return &models.WeekStatus{
 		StartDate:    startDate,
 		EndDate:      endDate,
-		WorkMinutes:  work,
-		LunchMinutes: lunch,
-		BreakMinutes: brk,
+		WorkMinutes:  work + ow,
+		LunchMinutes: lunch + ol,
+		BreakMinutes: brk + ob,
 	}, nil
 }
 
