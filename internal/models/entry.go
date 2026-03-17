@@ -87,15 +87,22 @@ func AccumulateMinutes(entries []Entry) (workMinutes, lunchMinutes, breakMinutes
 	return
 }
 
+// FormatHoursMinutes formats a duration in minutes as "Xh Ym".
+func FormatHoursMinutes(totalMinutes int) string {
+	h := totalMinutes / 60
+	m := totalMinutes % 60
+	return fmt.Sprintf("%dh %dm", h, m)
+}
+
 // FormatStatusSummary returns a formatted string with day and week hours.
 func FormatStatusSummary(dayStatus *DayStatus, weekStatus *WeekStatus) string {
-	s := fmt.Sprintf("Today: %.1fh worked\nThis week: %.1fh worked, %.1fh lunch",
-		float64(dayStatus.WorkMinutes)/60.0,
-		float64(weekStatus.WorkMinutes)/60.0,
-		float64(weekStatus.LunchMinutes)/60.0,
+	s := fmt.Sprintf("Today: %s worked\nThis week: %s worked, %s lunch",
+		FormatHoursMinutes(dayStatus.WorkMinutes),
+		FormatHoursMinutes(weekStatus.WorkMinutes),
+		FormatHoursMinutes(weekStatus.LunchMinutes),
 	)
 	if weekStatus.BreakMinutes > 0 {
-		s += fmt.Sprintf(", %.1fh break", float64(weekStatus.BreakMinutes)/60.0)
+		s += fmt.Sprintf(", %s break", FormatHoursMinutes(weekStatus.BreakMinutes))
 	}
 	return s
 }

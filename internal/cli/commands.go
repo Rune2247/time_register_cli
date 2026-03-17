@@ -6,6 +6,7 @@ import (
 	"github.com/rlf/time_register_cli/internal/actions"
 	"github.com/rlf/time_register_cli/internal/db"
 	googleapi "github.com/rlf/time_register_cli/internal/google"
+	"github.com/rlf/time_register_cli/internal/models"
 	"github.com/rlf/time_register_cli/internal/sync"
 	"github.com/spf13/cobra"
 )
@@ -141,10 +142,10 @@ func newWeekCmd(d *db.DB) *cobra.Command {
 				return err
 			}
 			fmt.Printf("Week %s to %s\n", weekStatus.StartDate, weekStatus.EndDate)
-			fmt.Printf("Work: %.1f hours\n", float64(weekStatus.WorkMinutes)/60.0)
-			fmt.Printf("Lunch: %.1f hours\n", float64(weekStatus.LunchMinutes)/60.0)
+			fmt.Printf("Work: %s\n", models.FormatHoursMinutes(weekStatus.WorkMinutes))
+			fmt.Printf("Lunch: %s\n", models.FormatHoursMinutes(weekStatus.LunchMinutes))
 			if weekStatus.BreakMinutes > 0 {
-				fmt.Printf("Break: %.1f hours\n", float64(weekStatus.BreakMinutes)/60.0)
+				fmt.Printf("Break: %s\n", models.FormatHoursMinutes(weekStatus.BreakMinutes))
 			}
 			return nil
 		},
