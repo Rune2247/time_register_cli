@@ -263,6 +263,15 @@ func (d *DB) AppendNote(id int64, note string) error {
 	return err
 }
 
+// UpdateNotes replaces the notes field for an entry.
+func (d *DB) UpdateNotes(id int64, notes string) error {
+	_, err := d.conn.Exec(
+		`UPDATE entries SET notes = ?, posted_to_sheets = 0, updated_at = datetime('now') WHERE id = ?`,
+		notes, id,
+	)
+	return err
+}
+
 func scanEntries(rows *sql.Rows) ([]models.Entry, error) {
 	var entries []models.Entry
 	for rows.Next() {

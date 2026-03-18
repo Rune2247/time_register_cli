@@ -68,6 +68,8 @@ const (
 	phaseLunchTo
 	phaseOptionsMenu
 	phaseNoteInput
+	phaseNoteList
+	phaseNoteConfirm
 	phasePurgeFrom
 	phasePurgeTo
 	phaseResult
@@ -83,6 +85,7 @@ var mainMenu = []menuItem{
 	{label: "Lunch", value: "lunch"},
 	{label: "Break", value: "break"},
 	{label: "Add Note", value: "note"},
+	{label: "Manage Notes", value: "notes"},
 	{label: "End Day", value: "end"},
 	{label: "Backfill", value: "backfill"},
 	{label: "Edit Entries", value: "edit"},
@@ -141,6 +144,14 @@ type model struct {
 	editEntries   []models.Entry
 	editEntry     models.Entry
 	editField     string // "name", "start", "end"
+
+	// note management state
+	noteEntry     models.Entry
+	noteLines     []string
+	noteDeleteIdx int
+	noteDates     []string
+	noteDateIdx   int
+	noteEntries   []models.Entry
 
 	// purge state
 	purgeFrom string
@@ -280,8 +291,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case phaseMenu, phaseBackfillType, phaseEditDayList, phaseEditEntryList, phaseEditFieldSelect, phaseOptionsMenu:
 		return m.updateMenu(msg)
+	case phaseNoteList:
+		return m.updateNoteList(msg)
 	case phaseInput, phaseLunchFrom, phaseLunchTo, phaseBackfillDate, phaseBackfillTime, phaseBackfillName, phaseHolidayDate, phaseEditValue, phaseNoteInput, phasePurgeFrom, phasePurgeTo:
 		return m.updateInput(msg)
+	case phaseNoteConfirm:
+		if msg, ok := msg.(tea.KeyMsg); ok {
+			switch msg.String() {
+			case "enter":
+				return m.confirmNoteDelete()
+			case "backspace", "esc":
+				m.phase = phaseNoteList
+				m.menuItems = m.notesToMenuItems()
+				return m, nil
+			}
+		}
+		return m, nil
 	case phaseResult:
 		return m.updateResult(msg)
 	}
@@ -317,11 +342,15 @@ func (m model) goBack() (tea.Model, tea.Cmd) {
 		m.textInput.Placeholder = "12:00"
 		m.err = nil
 		return m, nil
-	case phaseNoteInput:
+	case phaseNoteInput, phaseNoteList:
 		m.phase = phaseMenu
 		m.cursor = 0
 		m.menuItems = mainMenu
 		m.err = nil
+		return m, nil
+	case phaseNoteConfirm:
+		m.phase = phaseNoteList
+		m.menuItems = m.notesToMenuItems()
 		return m, nil
 	case phasePurgeFrom:
 		m.phase = phaseOptionsMenu
@@ -371,6 +400,75 @@ func (m model) entriesToMenuItems() []menuItem {
 	return items
 }
 
+func (m model) loadNotesForDate(date string) (tea.Model, tea.Cmd) {
+	entries, err := m.db.GetEntriesByDate(date)
+	if err != nil {
+		m.phase = phaseResult
+		m.err = err
+		return m, nil
+	}
+
+	m.noteEntries = entries
+	m.noteLines = nil
+	for _, e := range entries {
+		if e.Notes == "" {
+			continue
+		}
+		for _, line := range strings.Split(e.Notes, "\n") {
+			m.noteLines = append(m.noteLines, line)
+		}
+	}
+
+	if len(m.noteLines) == 0 {
+		m.noteLines = nil
+		m.menuItems = nil
+	} else {
+		m.menuItems = m.notesToMenuItems()
+	}
+	m.phase = phaseNoteList
+	m.cursor = 0
+	return m, nil
+}
+
+func (m model) notesToMenuItems() []menuItem {
+	items := make([]menuItem, len(m.noteLines))
+	for i, line := range m.noteLines {
+		items[i] = menuItem{label: line, value: fmt.Sprintf("%d", i)}
+	}
+	return items
+}
+
+func (m model) updateNoteList(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if len(m.menuItems) > 0 && m.cursor < len(m.menuItems)-1 {
+				m.cursor++
+			}
+		case "left", "h":
+			if m.noteDateIdx < len(m.noteDates)-1 {
+				m.noteDateIdx++
+				return m.loadNotesForDate(m.noteDates[m.noteDateIdx])
+			}
+		case "right", "l":
+			if m.noteDateIdx > 0 {
+				m.noteDateIdx--
+				return m.loadNotesForDate(m.noteDates[m.noteDateIdx])
+			}
+		case "enter":
+			if len(m.noteLines) > 0 {
+				return m.handleNoteDelete(m.menuItems[m.cursor].value)
+			}
+		}
+	}
+	return m, nil
+}
+
 func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -393,6 +491,9 @@ func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 	selected := m.menuItems[m.cursor].value
 
+	if m.phase == phaseNoteList {
+		return m.handleNoteDelete(selected)
+	}
 	if m.phase == phaseEditDayList {
 		return m.handleEditDaySelect(selected)
 	}
@@ -427,6 +528,22 @@ func (m model) handleMenuSelect() (tea.Model, tea.Cmd) {
 		m.textInput.Placeholder = "e.g. Fixed login bug"
 		m.err = nil
 		return m, nil
+
+	case "notes":
+		dates, err := m.db.GetDistinctDates(30)
+		if err != nil {
+			m.phase = phaseResult
+			m.err = err
+			return m, nil
+		}
+		if len(dates) == 0 {
+			m.phase = phaseResult
+			m.result = "No entries found."
+			return m, nil
+		}
+		m.noteDates = dates
+		m.noteDateIdx = 0
+		return m.loadNotesForDate(dates[0])
 
 	case "start":
 		m.phase = phaseInput
@@ -800,6 +917,58 @@ func (m model) handleEditDaySelect(date string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) handleNoteDelete(indexStr string) (tea.Model, tea.Cmd) {
+	var idx int
+	fmt.Sscanf(indexStr, "%d", &idx)
+	if idx < 0 || idx >= len(m.noteLines) {
+		return m, nil
+	}
+
+	m.noteDeleteIdx = idx
+	m.phase = phaseNoteConfirm
+	return m, nil
+}
+
+// findNoteOwner finds which entry owns a given note line and removes it.
+func (m model) findNoteOwner(noteLine string) (entryID int64, remaining string, found bool) {
+	for _, e := range m.noteEntries {
+		if e.Notes == "" {
+			continue
+		}
+		lines := strings.Split(e.Notes, "\n")
+		for i, line := range lines {
+			if line == noteLine {
+				newLines := append(lines[:i], lines[i+1:]...)
+				return e.ID, strings.Join(newLines, "\n"), true
+			}
+		}
+	}
+	return 0, "", false
+}
+
+func (m model) confirmNoteDelete() (tea.Model, tea.Cmd) {
+	idx := m.noteDeleteIdx
+	deleted := m.noteLines[idx]
+
+	entryID, remaining, found := m.findNoteOwner(deleted)
+	if !found {
+		m.phase = phaseResult
+		m.err = fmt.Errorf("could not find note owner")
+		return m, nil
+	}
+
+	if err := m.db.UpdateNotes(entryID, remaining); err != nil {
+		m.phase = phaseResult
+		m.err = err
+		return m, nil
+	}
+
+	actions.TriggerSync(m.db)
+
+	// Reload notes for current date
+	return m.loadNotesForDate(m.noteDates[m.noteDateIdx])
+}
+
 func (m model) handleEditEntrySelect(idStr string) (tea.Model, tea.Cmd) {
 	var id int64
 	fmt.Sscanf(idStr, "%d", &id)
@@ -937,6 +1106,33 @@ func (m model) View() string {
 			b.WriteString("\n")
 		}
 		b.WriteString(dimStyle.Render("\n  ↑/↓ navigate • enter select • esc back"))
+
+	case phaseNoteList:
+		currentDate := m.noteDates[m.noteDateIdx]
+		b.WriteString(titleStyle.Render(fmt.Sprintf("Notes — %s", currentDate)))
+		b.WriteString("\n\n")
+		if len(m.noteLines) == 0 {
+			b.WriteString(dimStyle.Render("  No notes for this day."))
+			b.WriteString("\n")
+		} else {
+			for i, item := range m.menuItems {
+				if i == m.cursor {
+					b.WriteString(selectedStyle.Render(fmt.Sprintf("  > %s", item.label)))
+				} else {
+					b.WriteString(fmt.Sprintf("    %s", item.label))
+				}
+				b.WriteString("\n")
+			}
+		}
+		nav := "\n  ←/→ change day • ↑/↓ navigate • enter delete • esc back"
+		b.WriteString(dimStyle.Render(nav))
+
+	case phaseNoteConfirm:
+		b.WriteString(errorStyle.Render("Delete this note?"))
+		b.WriteString("\n\n")
+		b.WriteString(fmt.Sprintf("  %s", m.noteLines[m.noteDeleteIdx]))
+		b.WriteString("\n")
+		b.WriteString(dimStyle.Render("\n  enter delete • backspace cancel"))
 
 	case phaseOptionsMenu:
 		b.WriteString("Options:\n\n")
