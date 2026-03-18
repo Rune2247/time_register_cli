@@ -130,6 +130,7 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 		rows = append(rows, []interface{}{dateStr, dayName, "", "", "", "", "", ""})
 		currentRow++
 
+		dayDataStart := currentRow
 		for _, e := range dayEntries {
 			entryType := capitalizeType(e.EntryType)
 			hours := math.Round(float64(e.DurationMinutes)/60.0*100) / 100
@@ -137,6 +138,29 @@ func (c *SheetsClient) WriteMonthTab(yearMonth string, entries []models.Entry) e
 			sheetNotes := strings.ReplaceAll(e.Notes, "\n", " | ")
 			rows = append(rows, []interface{}{
 				"", "", entryType, e.Name, e.StartTime, e.EndTime, hours, sheetNotes,
+			})
+			currentRow++
+		}
+
+		// Daily summary row
+		if len(dayEntries) > 0 {
+			dayWorkFormula := fmt.Sprintf(
+				`=SUMPRODUCT((C%d:C%d="Assignment")*(G%d:G%d))`,
+				dayDataStart, currentRow-1,
+				dayDataStart, currentRow-1,
+			)
+			dayLunchFormula := fmt.Sprintf(
+				`=SUMPRODUCT((C%d:C%d="Lunch")*(G%d:G%d))`,
+				dayDataStart, currentRow-1,
+				dayDataStart, currentRow-1,
+			)
+			dayBreakFormula := fmt.Sprintf(
+				`=SUMPRODUCT((C%d:C%d="Break")*(G%d:G%d))`,
+				dayDataStart, currentRow-1,
+				dayDataStart, currentRow-1,
+			)
+			rows = append(rows, []interface{}{
+				"", "", "", "", dayWorkFormula, dayLunchFormula, dayBreakFormula, "",
 			})
 			currentRow++
 		}

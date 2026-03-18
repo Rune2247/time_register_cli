@@ -207,6 +207,10 @@ func (m model) buildStatusHeader() string {
 	}
 	b.WriteString(dimStyle.Render(fmt.Sprintf("  Google:  %s", googleStatus)))
 	b.WriteString("\n")
+	if googleStatus == "not authenticated" {
+		b.WriteString(errorStyle.Render("  ⚠ Run 'timereg auth' to sync with Sheets & Calendar"))
+		b.WriteString("\n")
+	}
 
 	unsynced, err := m.db.GetUnsyncedEntries()
 	if err == nil && len(unsynced) > 0 {
